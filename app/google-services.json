@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "170907502083",
+    "project_id": "comworkhubui",
+    "storage_bucket": "comworkhubui.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:170907502083:android:3813d8caf94101c86c7036",
+        "android_client_info": {
+          "package_name": "com.workhubui"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAcUHb4im2YbSRWcyiATuCqsZwWp5V4TyI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -1,4 +1,4 @@
-package com.workhubui.screens
+package com.workhubui.screens.taskboard
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.selection.toggleable

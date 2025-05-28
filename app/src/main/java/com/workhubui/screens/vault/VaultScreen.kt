@@ -1,4 +1,4 @@
-package com.workhubui.screens
+package com.workhubui.screens.vault
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*

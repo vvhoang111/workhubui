@@ -1,1 +1,28 @@
-/build
+# IDE files
+.idea/
+.gradle/
+local.properties
+*.iml
+build/
+captures/
+*.apk
+*.aab
+*.ap_
+*.aar
+*.dex
+*.class
+
+# Kotlin
+.kotlin/
+*.jar
+*.war
+
+# Log files
+*.log
+
+# Keystore files (NEVER commit keystore files with sensitive passwords)
+# *.jks
+# *.keystore
+
+# Google Services (Tùy chọn - nếu bạn không muốn commit google-services.json)
+# google-services.json
