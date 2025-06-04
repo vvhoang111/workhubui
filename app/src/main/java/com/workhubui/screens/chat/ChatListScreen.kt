@@ -3,34 +3,16 @@ package com.workhubui.screens.chat
 import android.app.Application
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.runtime.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.* // Import này bao gồm getValue và setValue cho by delegate
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -38,23 +20,57 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.ViewModel // Đảm bảo import ViewModel
+import androidx.lifecycle.ViewModelProvider // Đảm bảo import ViewModelProvider
+import androidx.lifecycle.viewModelScope // Đảm bảo import viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
-import com.workhubui.model.ChatMessage // Giả sử bạn có model này cho các cuộc trò chuyện gần đây
+import com.workhubui.data.local.AppDatabase
+import com.workhubui.data.local.entity.UserEntity
+import com.workhubui.data.repository.UserRepository
 import com.workhubui.navigation.Routes
-import com.workhubui.screens.auth.AuthViewModel // Để lấy currentUser
+import com.workhubui.screens.auth.AuthViewModel
 import com.workhubui.screens.auth.AuthViewModelFactory
-// import com.workhubui.screens.home.formatTimestamp // Nếu bạn muốn dùng lại hàm này, cần di chuyển nó ra utility
+import kotlinx.coroutines.flow.MutableStateFlow // Đảm bảo import MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow // Đảm bảo import StateFlow
+import kotlinx.coroutines.flow.collectLatest // Đảm bảo import collectLatest
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.collectAsState // Đảm bảo import collectAsState
 
-// Tạm thời định nghĩa formatTimestamp ở đây, nên đưa vào file utils chung
-private fun formatTimestampLocal(timestamp: Long): String {
-    val sdf = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
-    return sdf.format(java.util.Date(timestamp))
+// ChatListViewModel
+class ChatListViewModel(application: Application, private val userRepository: UserRepository) : ViewModel() {
+    private val _users = MutableStateFlow<List<UserEntity>>(emptyList())
+    val users: StateFlow<List<UserEntity>> = _users
+
+    init {
+        // Sử dụng viewModelScope để khởi chạy coroutine
+        viewModelScope.launch {
+            loadUsers()
+        }
+    }
+
+    private fun loadUsers() {
+        viewModelScope.launch {
+            userRepository.getAllUsers().collectLatest { usersList -> // Đổi 'it' thành 'usersList' để rõ ràng hơn
+                _users.value = usersList
+            }
+        }
+    }
 }
 
-
-// Dummy data class cho danh sách chat
-data class ChatRoom(val id: String, val name: String, val lastMessage: String, val timestamp: Long, val unreadCount: Int = 0)
+// Factory cho ChatListViewModel
+class ChatListViewModelFactory(private val application: Application) : ViewModelProvider.Factory {
+    // Sửa lỗi 'create' overrides nothing và ViewModel type mismatch
+    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+        if (modelClass.isAssignableFrom(ChatListViewModel::class.java)) {
+            val userDao = AppDatabase.getInstance(application).userDao()
+            val userRepository = UserRepository(userDao)
+            @Suppress("UNCHECKED_CAST")
+            return ChatListViewModel(application, userRepository) as T
+        }
+        throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -63,18 +79,9 @@ fun ChatListScreen(navController: NavHostController) {
     val authViewModel: AuthViewModel = viewModel(factory = AuthViewModelFactory(application))
     val currentUserEmail by authViewModel.currentUserEmail.collectAsState()
 
-    // TODO: Khởi tạo ChatListViewModel để lấy danh sách các phòng chat
-    // val chatListViewModel: ChatListViewModel = viewModel(...)
-    // val chatRooms by chatListViewModel.chatRooms.collectAsState()
+    val chatListViewModel: ChatListViewModel = viewModel(factory = ChatListViewModelFactory(application))
+    val allUsers by chatListViewModel.users.collectAsState()
 
-    // Dữ liệu giả lập cho danh sách phòng chat
-    val dummyChatRooms = remember {
-        listOf(
-            ChatRoom("user2@example.com", "Alice Wonderland", "Great, see you then!", System.currentTimeMillis() - 100000, 2),
-            ChatRoom("user3@example.com", "Bob The Builder", "Okay, I will check it.", System.currentTimeMillis() - 500000),
-            ChatRoom("user4@example.com", "Charlie Brown", "Sounds good!", System.currentTimeMillis() - 1000000, 1)
-        )
-    }
     var searchQuery by remember { mutableStateOf("") }
 
     Scaffold(
@@ -85,16 +92,18 @@ fun ChatListScreen(navController: NavHostController) {
                     IconButton(onClick = { /* TODO: Handle search action */ }) {
                         Icon(Icons.Filled.Search, contentDescription = "Tìm kiếm")
                     }
+                    IconButton(onClick = { navController.navigate(Routes.ADD_FRIEND) }) {
+                        Icon(Icons.Filled.Add, contentDescription = "Thêm bạn bè")
+                    }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant ,
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
                     titleContentColor = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             )
         }
     ) { paddingValues ->
         Column(modifier = Modifier.padding(paddingValues).fillMaxSize()) {
-            // Thanh tìm kiếm (ví dụ cơ bản)
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
@@ -102,10 +111,17 @@ fun ChatListScreen(navController: NavHostController) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 8.dp),
-                leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null)}
+                leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) }
             )
 
-            if (dummyChatRooms.isEmpty()) {
+            val filteredUsers = allUsers.filter { user ->
+                // Lọc bỏ chính người dùng hiện tại khỏi danh sách chat
+                user.email != currentUserEmail &&
+                        (user.displayName?.contains(searchQuery, ignoreCase = true) == true ||
+                                user.email?.contains(searchQuery, ignoreCase = true) == true)
+            }
+
+            if (filteredUsers.isEmpty()) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text("Không có cuộc trò chuyện nào.")
                 }
@@ -113,14 +129,25 @@ fun ChatListScreen(navController: NavHostController) {
                 LazyColumn(
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
                 ) {
-                    items(dummyChatRooms.filter { it.name.contains(searchQuery, ignoreCase = true) || it.lastMessage.contains(searchQuery, ignoreCase = true) }) { room ->
-                        ChatListItem(chatRoom = room) {
+                    // Sửa lỗi 'uid' bằng cách sử dụng safe call và Elvis operator
+                    items(filteredUsers, key = { it.uid ?: "" }) { user ->
+                        // Lấy tin nhắn cuối cùng cho cuộc trò chuyện này (TODO: cần logic phức tạp hơn)
+                        val lastMessage = "Tin nhắn cuối cùng..." // Placeholder
+                        val lastMessageTimestamp = System.currentTimeMillis() // Placeholder
+
+                        ChatListItem(
+                            chatRoom = ChatRoom(
+                                id = user.uid ?: "", // Sửa lỗi 'uid'
+                                name = user.displayName ?: user.email?.substringBefore("@") ?: "Unknown User", // Sửa lỗi 'displayName' và 'email'
+                                lastMessage = lastMessage,
+                                timestamp = lastMessageTimestamp
+                            )
+                        ) {
                             currentUserEmail?.let { currentEmail ->
-                                // Điều hướng đến màn hình chi tiết cuộc trò chuyện
-                                navController.navigate(Routes.CHAT + "/${currentEmail}/${room.id}")
+                                navController.navigate(Routes.CHAT + "/${currentEmail}/${user.email}") // Sửa lỗi 'email'
                             }
                         }
-                        // HorizontalDivider() // Nếu bạn muốn có đường kẻ giữa các mục
+                        HorizontalDivider()
                     }
                 }
             }
@@ -156,15 +183,14 @@ fun ChatListItem(chatRoom: ChatRoom, onClick: () -> Unit) {
         }
         Spacer(Modifier.width(8.dp))
         Column(horizontalAlignment = Alignment.End) {
+            // Sửa lỗi 'formatTimestamp' bằng cách sử dụng hàm placeholder hoặc đảm bảo import đúng
             Text(
-                formatTimestampLocal(chatRoom.timestamp),
+                formatTimestamp(chatRoom.timestamp),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.outline
             )
             if (chatRoom.unreadCount > 0) {
                 Spacer(Modifier.height(4.dp))
-                // Badge cho tin nhắn chưa đọc (ví dụ đơn giản)
-                // Bạn có thể dùng Badge Composable của Material 3 nếu muốn phức tạp hơn
                 Box(
                     modifier = Modifier
                         .size(20.dp)
@@ -181,4 +207,15 @@ fun ChatListItem(chatRoom: ChatRoom, onClick: () -> Unit) {
             }
         }
     }
+}
+
+// Dummy data class cho danh sách chat (có thể thay thế bằng UserEntity hoặc một model phức tạp hơn)
+data class ChatRoom(val id: String, val name: String, val lastMessage: String, val timestamp: Long, val unreadCount: Int = 0)
+
+// Hàm placeholder cho formatTimestamp.
+// Bạn cần đảm bảo hàm này được định nghĩa ở đâu đó trong project của bạn
+// (ví dụ: trong file com.workhubui.screens.home.formatTimestamp như import ban đầu)
+// Nếu không, hãy giữ hàm này hoặc thay thế bằng logic định dạng thời gian của bạn.
+fun formatTimestamp(timestamp: Long): String {
+    return java.text.SimpleDateFormat("HH:mm").format(java.util.Date(timestamp))
 }

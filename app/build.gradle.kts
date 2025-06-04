@@ -1,7 +1,7 @@
 plugins {
     id("com.android.application")
     kotlin("android")
-    kotlin("plugin.compose") // Sử dụng plugin compose của Kotlin
+    kotlin("plugin.compose")
     id ("kotlin-kapt")
     id("com.google.gms.google-services")
 }
@@ -12,7 +12,7 @@ android {
 
     defaultConfig {
         applicationId = "com.workhubui"
-        minSdk = 27 // Phù hợp với java.time và các API hiện đại
+        minSdk = 27
         targetSdk = 34
         versionCode = 1
         versionName = "1.0"
@@ -21,7 +21,7 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false // Tạm thời tắt để dễ debug, bật lại sau
+            isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -34,8 +34,8 @@ android {
     }
 
     composeOptions {
-        // Kiểm tra phiên bản tương thích tại: developer.android.com/jetpack/androidx/releases/compose-kotlin
-        kotlinCompilerExtensionVersion = "1.5.11" // Điều chỉnh nếu cần dựa trên phiên bản Kotlin/Compose BOM
+        // Phiên bản này (1.5.11) tương thích với Compose BOM 2025.05.01 và Kotlin 1.9.22
+        kotlinCompilerExtensionVersion = "1.5.11"
     }
 
     compileOptions {
@@ -62,53 +62,56 @@ kapt {
 }
 
 dependencies {
-    // AndroidX Core
-    implementation("androidx.core:core-ktx:1.13.1")
-    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.0")
+    // Core Android
+    implementation("androidx.core:core-ktx:1.12.0")
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
+    // Cập nhật activity-compose lên phiên bản mới nhất tương thích với Compose BOM 2025.05.01
     implementation("androidx.activity:activity-compose:1.9.0")
 
-    // Compose - Sử dụng BOM
-    val composeBom = platform("androidx.compose:compose-bom:2024.05.00")
-    implementation(composeBom)
-    androidTestImplementation(composeBom)
-
+    // Sử dụng Compose BOM phiên bản mới nhất (2025.05.01)
+    implementation(platform("androidx.compose:compose-bom:2025.05.01"))
     implementation("androidx.compose.ui:ui")
-    implementation("androidx.compose.material3:material3")
+    implementation("androidx.compose.ui:ui-graphics")
     implementation("androidx.compose.ui:ui-tooling-preview")
-    debugImplementation("androidx.compose.ui:ui-tooling")
-    androidTestImplementation("androidx.compose.ui:ui-test-junit4")
-    debugImplementation("androidx.compose.ui:ui-test-manifest")
-
-    // Navigation Compose
-    implementation("androidx.navigation:navigation-compose:2.7.7")
-
-    // Material Icons Extended
+    implementation("androidx.compose.material3:material3")
+    implementation("androidx.compose.material:material-icons-core")
     implementation("androidx.compose.material:material-icons-extended")
+//    implementation("androidx.compose.ui:ui-text-input") // Đây là thư viện gây lỗi, giờ sẽ được resolve
+    implementation("androidx.navigation:navigation-compose:2.7.7") // Giữ nguyên phiên bản này
 
-    // Room
+    // Firebase
+    implementation(platform("com.google.firebase:firebase-bom:32.7.0"))
+    implementation("com.google.firebase:firebase-auth-ktx")
+    implementation("com.google.firebase:firebase-database-ktx")
+    implementation("com.google.firebase:firebase-firestore-ktx")
+    implementation("com.google.firebase:firebase-storage-ktx")
+    implementation("com.google.firebase:firebase-messaging-ktx")
+
+    // OkHttp
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+
+    // Biometric
+    implementation("androidx.biometric:biometric:1.2.0-alpha05")
+
+    // Room (SQLCipher)
     implementation("androidx.room:room-runtime:2.6.1")
-    implementation("androidx.room:room-ktx:2.6.1")
     kapt("androidx.room:room-compiler:2.6.1")
-
-    // SQLCipher
+    implementation("androidx.room:room-ktx:2.6.1")
     implementation("net.zetetic:android-database-sqlcipher:4.5.4")
 
-    // Firebase - Sử dụng BOM
-    implementation(platform("com.google.firebase:firebase-bom:33.1.1"))
-    implementation("com.google.firebase:firebase-auth-ktx")
-    implementation("com.google.firebase:firebase-messaging")
-    implementation("com.google.firebase:firebase-analytics")
-    // implementation("com.google.firebase:firebase-database-ktx") // Cho Realtime DB
-    // implementation("com.google.firebase:firebase-storage-ktx") // Cho Cloud Storage
+    // Security Crypto
+    implementation("androidx.security:security-crypto:1.1.0-alpha06")
 
-    // Google Play Services Auth (Cần cho Google Sign-In, có thể không cần nếu chỉ dùng Email/Pass Auth)
-    implementation("com.google.android.gms:play-services-auth:21.2.0")
+    // Coil
+    implementation("io.coil-kt:coil-compose:2.5.0")
 
-    // AndroidX Security (Cho EncryptedSharedPreferences)
-    implementation("androidx.security:security-crypto:1.1.0-alpha06") // Hoặc phiên bản ổn định mới hơn
-
-    // Testing
+    // Test
     testImplementation("junit:junit:4.13.2")
-    // androidTestImplementation("androidx.test.ext:junit:1.1.5")
-    // androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
+    androidTestImplementation("androidx.test.ext:junit:1.1.5")
+    androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
+    // Đảm bảo BOM cho androidTest cũng là phiên bản mới nhất
+    androidTestImplementation(platform("androidx.compose:compose-bom:2025.05.01"))
+    androidTestImplementation("androidx.compose.ui:ui-test-junit4")
+    debugImplementation("androidx.compose.ui:ui-tooling")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
 }
