@@ -2,18 +2,18 @@ plugins {
     id("com.android.application")
     kotlin("android")
     kotlin("plugin.compose")
-    id ("kotlin-kapt")
+    id("kotlin-kapt") // Đảm bảo plugin này được áp dụng
     id("com.google.gms.google-services")
 }
 
 android {
     namespace = "com.workhubui"
-    compileSdk = 36 // << THAY ĐỔI Ở ĐÂY: Nâng cấp từ 34 lên 36
+    compileSdk = 36 // Giữ nguyên hoặc đảm bảo đây là phiên bản bạn muốn
 
     defaultConfig {
         applicationId = "com.workhubui"
         minSdk = 27
-        targetSdk = 34 // Bạn có thể giữ targetSdk là 34 hoặc nâng cấp lên 36 nếu muốn
+        targetSdk = 34 // Cân nhắc nâng cấp lên 36 nếu compileSdk là 36
         versionCode = 1
         versionName = "1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -34,8 +34,7 @@ android {
     }
 
     composeOptions {
-        // Phiên bản này (1.5.11) tương thích với Compose BOM 2025.05.01 và Kotlin 1.9.22
-        kotlinCompilerExtensionVersion = "1.5.11"
+        kotlinCompilerExtensionVersion = "1.5.11" // Đảm bảo phiên bản này tương thích
     }
 
     compileOptions {
@@ -55,31 +54,39 @@ android {
         }
     }
 }
+
 kapt {
+    correctErrorTypes = true // Giúp hiển thị lỗi từ annotation processor chính xác hơn
     arguments {
+        // Chỉ định vị trí schema cho Room
         arg("room.schemaLocation", "$projectDir/schemas")
+        // QUAN TRỌNG: KHÔNG thêm 'kapt.kotlin.generated' vào đây như một 'arg'.
+        // Kapt tự quản lý thư mục chứa code Kotlin được sinh ra.
     }
+    // Nếu bạn cần tùy chỉnh thư mục output của Kapt (thường không cần thiết):
+    // kotlinSourcesDestinationDir = file("$buildDir/generated/source/kaptKotlin")
+    // nhưng lỗi của bạn không phải về việc không tìm thấy thư mục output,
+    // mà là việc 'kapt.kotlin.generated' bị coi như một "option".
 }
 
 dependencies {
     // Core Android
-    implementation("androidx.core:core-ktx:1.12.0") // Giữ nguyên hoặc cập nhật nếu cần
-    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0") // Giữ nguyên hoặc cập nhật
-    // Cập nhật activity-compose lên phiên bản mới nhất tương thích với Compose BOM
-    implementation("androidx.activity:activity-compose:1.9.0") // Đã là phiên bản khá mới
+    implementation("androidx.core:core-ktx:1.12.0")
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
+    implementation("androidx.activity:activity-compose:1.9.0")
 
-    // Sử dụng Compose BOM phiên bản mới nhất (2025.05.01)
-    implementation(platform("androidx.compose:compose-bom:2025.05.01"))
+    // Compose BOM
+    implementation(platform("androidx.compose:compose-bom:2024.06.00")) // Sử dụng BOM mới nhất hoặc phiên bản bạn đã chọn (ví dụ 2025.05.01)
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-graphics")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-core")
     implementation("androidx.compose.material:material-icons-extended")
-    implementation("androidx.navigation:navigation-compose:2.7.7")
+    implementation("androidx.navigation:navigation-compose:2.7.7") // Hoặc phiên bản mới hơn nếu có
 
-    // Firebase
-    implementation(platform("com.google.firebase:firebase-bom:32.7.0")) // Xem xét cập nhật lên bản mới nhất nếu có, ví dụ 33.0.0
+    // Firebase BOM
+    implementation(platform("com.google.firebase:firebase-bom:33.0.0")) // Sử dụng Firebase BOM mới nhất
     implementation("com.google.firebase:firebase-auth-ktx")
     implementation("com.google.firebase:firebase-database-ktx")
     implementation("com.google.firebase:firebase-firestore-ktx")
@@ -87,30 +94,30 @@ dependencies {
     implementation("com.google.firebase:firebase-messaging-ktx")
 
     // OkHttp
-    implementation("com.squareup.okhttp3:okhttp:4.12.0") // Giữ nguyên hoặc cập nhật
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
     // Biometric
-    implementation("androidx.biometric:biometric:1.2.0-alpha05") // Có thể có bản stable hơn
+    implementation("androidx.biometric:biometric:1.2.0-alpha05") // Cân nhắc bản stable nếu có
 
     // Room (SQLCipher)
     implementation("androidx.room:room-runtime:2.6.1")
-    kapt("androidx.room:room-compiler:2.6.1")
+    kapt("androidx.room:room-compiler:2.6.1") // Annotation processor cho Room
     implementation("androidx.room:room-ktx:2.6.1")
-    implementation("net.zetetic:android-database-sqlcipher:4.5.4") // Kiểm tra bản mới nhất
+    implementation("net.zetetic:android-database-sqlcipher:4.5.4") // Kiểm tra phiên bản mới nhất
 
     // Security Crypto
-    implementation("androidx.security:security-crypto:1.1.0-alpha06") // Có thể có bản stable hơn
+    implementation("androidx.security:security-crypto:1.1.0-alpha06") // Cân nhắc bản stable
 
     // Coil
-    implementation("io.coil-kt:coil-compose:2.5.0") // Kiểm tra bản mới nhất, ví dụ 2.6.0
+    implementation("io.coil-kt:coil-compose:2.6.0") // Cập nhật Coil
 
     // Test
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
-    // Đảm bảo BOM cho androidTest cũng là phiên bản mới nhất
-    androidTestImplementation(platform("androidx.compose:compose-bom:2025.05.01"))
+    androidTestImplementation(platform("androidx.compose:compose-bom:2024.06.00")) // Đồng bộ BOM
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 }
+

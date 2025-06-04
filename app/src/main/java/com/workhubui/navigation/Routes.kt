@@ -18,9 +18,7 @@ object Routes {
     const val SETTINGS = "Settings" // Màn hình cài đặt
     const val PROFILE = "Profile" // Màn hình hồ sơ cá nhân
 
-// Các màn hình cũ có thể đã được tích hợp hoặc loại bỏ
-// const val SCHEDULE = "Schedule"
-// const val TASKBOARD = "Taskboard"
-
-
+    // Thêm Task và Lịch/Meeting << CÁC ROUTE MỚI ĐƯỢC THÊM VÀO ĐÂY >>
+    const val ADD_TASK = "AddTask"
+    const val ADD_SCHEDULE_ITEM = "AddScheduleItem"
 }
