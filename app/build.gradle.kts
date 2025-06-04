@@ -8,12 +8,12 @@ plugins {
 
 android {
     namespace = "com.workhubui"
-    compileSdk = 34
+    compileSdk = 36 // << THAY ĐỔI Ở ĐÂY: Nâng cấp từ 34 lên 36
 
     defaultConfig {
         applicationId = "com.workhubui"
         minSdk = 27
-        targetSdk = 34
+        targetSdk = 34 // Bạn có thể giữ targetSdk là 34 hoặc nâng cấp lên 36 nếu muốn
         versionCode = 1
         versionName = "1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -63,10 +63,10 @@ kapt {
 
 dependencies {
     // Core Android
-    implementation("androidx.core:core-ktx:1.12.0")
-    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
-    // Cập nhật activity-compose lên phiên bản mới nhất tương thích với Compose BOM 2025.05.01
-    implementation("androidx.activity:activity-compose:1.9.0")
+    implementation("androidx.core:core-ktx:1.12.0") // Giữ nguyên hoặc cập nhật nếu cần
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0") // Giữ nguyên hoặc cập nhật
+    // Cập nhật activity-compose lên phiên bản mới nhất tương thích với Compose BOM
+    implementation("androidx.activity:activity-compose:1.9.0") // Đã là phiên bản khá mới
 
     // Sử dụng Compose BOM phiên bản mới nhất (2025.05.01)
     implementation(platform("androidx.compose:compose-bom:2025.05.01"))
@@ -76,11 +76,10 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-core")
     implementation("androidx.compose.material:material-icons-extended")
-//    implementation("androidx.compose.ui:ui-text-input") // Đây là thư viện gây lỗi, giờ sẽ được resolve
-    implementation("androidx.navigation:navigation-compose:2.7.7") // Giữ nguyên phiên bản này
+    implementation("androidx.navigation:navigation-compose:2.7.7")
 
     // Firebase
-    implementation(platform("com.google.firebase:firebase-bom:32.7.0"))
+    implementation(platform("com.google.firebase:firebase-bom:32.7.0")) // Xem xét cập nhật lên bản mới nhất nếu có, ví dụ 33.0.0
     implementation("com.google.firebase:firebase-auth-ktx")
     implementation("com.google.firebase:firebase-database-ktx")
     implementation("com.google.firebase:firebase-firestore-ktx")
@@ -88,22 +87,22 @@ dependencies {
     implementation("com.google.firebase:firebase-messaging-ktx")
 
     // OkHttp
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0") // Giữ nguyên hoặc cập nhật
 
     // Biometric
-    implementation("androidx.biometric:biometric:1.2.0-alpha05")
+    implementation("androidx.biometric:biometric:1.2.0-alpha05") // Có thể có bản stable hơn
 
     // Room (SQLCipher)
     implementation("androidx.room:room-runtime:2.6.1")
     kapt("androidx.room:room-compiler:2.6.1")
     implementation("androidx.room:room-ktx:2.6.1")
-    implementation("net.zetetic:android-database-sqlcipher:4.5.4")
+    implementation("net.zetetic:android-database-sqlcipher:4.5.4") // Kiểm tra bản mới nhất
 
     // Security Crypto
-    implementation("androidx.security:security-crypto:1.1.0-alpha06")
+    implementation("androidx.security:security-crypto:1.1.0-alpha06") // Có thể có bản stable hơn
 
     // Coil
-    implementation("io.coil-kt:coil-compose:2.5.0")
+    implementation("io.coil-kt:coil-compose:2.5.0") // Kiểm tra bản mới nhất, ví dụ 2.6.0
 
     // Test
     testImplementation("junit:junit:4.13.2")

@@ -7,7 +7,12 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseAuthInvalidCredentialsException
 import com.google.firebase.auth.FirebaseAuthUserCollisionException
 import com.google.firebase.auth.FirebaseAuthWeakPasswordException
-import com.workhubui.security.TokenManager // Đảm bảo import đúng
+import com.google.firebase.auth.FirebaseUser
+import com.workhubui.data.local.AppDatabase
+import com.workhubui.data.local.entity.UserEntity
+import com.workhubui.data.remote.FirebaseRepository
+import com.workhubui.data.repository.UserRepository
+import com.workhubui.security.TokenManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -22,8 +27,13 @@ sealed class AuthResult {
 
 class AuthViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val firebaseAuth: FirebaseAuth = FirebaseAuth.getInstance()
+    private val firebaseAuthInstance: FirebaseAuth = FirebaseAuth.getInstance() // Renamed to avoid conflict
     private val tokenManager: TokenManager = TokenManager(application.applicationContext)
+    // For saving user to local and remote DB
+    private val userDao = AppDatabase.getInstance(application).userDao()
+    private val userRepository = UserRepository(userDao) // For local Room operations
+    private val firebaseRepository = FirebaseRepository() // For Firestore operations
+
 
     private val _authResult = MutableStateFlow<AuthResult>(AuthResult.Idle)
     val authResult: StateFlow<AuthResult> = _authResult
@@ -31,30 +41,31 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
     private val _currentUserEmail = MutableStateFlow<String?>(null)
     val currentUserEmail: StateFlow<String?> = _currentUserEmail
 
+    private val _currentUser = MutableStateFlow<FirebaseUser?>(null)
+    val currentUser: StateFlow<FirebaseUser?> = _currentUser
+
     init {
         checkCurrentUser()
     }
 
     private fun checkCurrentUser() {
-        val firebaseUser = firebaseAuth.currentUser
-        val token = tokenManager.getAccessToken() // Lấy token một lần
+        val firebaseUser = firebaseAuthInstance.currentUser
+        val token = tokenManager.getAccessToken()
 
         if (firebaseUser != null && token != null) {
             _currentUserEmail.value = firebaseUser.email
-            // TODO: Cân nhắc kiểm tra tính hợp lệ của token với server hoặc logic refresh token ở đây
+            _currentUser.value = firebaseUser
         } else {
-            if (firebaseUser == null || token == null) { // Chỉ clear nếu một trong hai không tồn tại
+            if (firebaseUser == null || token == null) {
                 tokenManager.clearTokens()
-                _currentUserEmail.value = null // Đảm bảo email cũng được clear
+                _currentUserEmail.value = null
+                _currentUser.value = null
             }
         }
     }
 
-
     fun isLoggedIn(): Boolean {
-        // Kiểm tra lại checkCurrentUser để đảm bảo trạng thái là mới nhất
-        // Hoặc dựa vào _currentUserEmail và token trực tiếp
-        return firebaseAuth.currentUser != null && tokenManager.getAccessToken() != null
+        return firebaseAuthInstance.currentUser != null && tokenManager.getAccessToken() != null
     }
 
     fun loginUser(email: String, password: String) {
@@ -65,13 +76,14 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
                 return@launch
             }
             try {
-                val authResultFirebase = firebaseAuth.signInWithEmailAndPassword(email, password).await()
+                val authResultFirebase = firebaseAuthInstance.signInWithEmailAndPassword(email, password).await()
                 val firebaseUser = authResultFirebase.user
                 if (firebaseUser != null) {
                     val idToken = firebaseUser.getIdToken(true).await().token
                     if (idToken != null) {
                         tokenManager.saveAccessToken(idToken)
                         _currentUserEmail.value = firebaseUser.email
+                        _currentUser.value = firebaseUser
                         _authResult.value = AuthResult.Success("Đăng nhập thành công!")
                     } else {
                         _authResult.value = AuthResult.Error("Không thể lấy token xác thực.")
@@ -94,18 +106,27 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
                 _authResult.value = AuthResult.Error("Email và mật khẩu không được để trống.")
                 return@launch
             }
-            // TODO: Thêm kiểm tra định dạng email hợp lệ
             try {
-                val authResultFirebase = firebaseAuth.createUserWithEmailAndPassword(email, password).await()
+                val authResultFirebase = firebaseAuthInstance.createUserWithEmailAndPassword(email, password).await()
                 val firebaseUser = authResultFirebase.user
                 if (firebaseUser != null) {
-                    // TODO: Gửi email xác thực nếu cần
-                    // firebaseUser.sendEmailVerification().await()
-
                     val idToken = firebaseUser.getIdToken(true).await().token
                     if (idToken != null) {
                         tokenManager.saveAccessToken(idToken)
                         _currentUserEmail.value = firebaseUser.email
+                        _currentUser.value = firebaseUser
+
+                        // Save user to local Room and Firebase Firestore
+                        val newUserEntity = UserEntity(
+                            uid = firebaseUser.uid,
+                            email = firebaseUser.email,
+                            displayName = firebaseUser.email?.substringBefore('@'), // Default display name
+                            photoUrl = null
+                        )
+                        userRepository.insertUser(newUserEntity) // Save to Room
+                        firebaseRepository.saveUserToFirestore(newUserEntity) // Save to Firestore
+
+
                         _authResult.value = AuthResult.Success("Đăng ký thành công! Đang đăng nhập...")
                     } else {
                         _authResult.value = AuthResult.Error("Đăng ký thành công nhưng không thể lấy token.")
@@ -127,9 +148,10 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
 
     fun logoutUser() {
         viewModelScope.launch {
-            firebaseAuth.signOut()
+            firebaseAuthInstance.signOut()
             tokenManager.clearTokens()
             _currentUserEmail.value = null
+            _currentUser.value = null
             _authResult.value = AuthResult.Idle
         }
     }

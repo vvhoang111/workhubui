@@ -1,42 +1,9 @@
-//package com.workhubui.navigation
-//
-//import androidx.compose.runtime.Composable
-//import androidx.navigation.NavHostController
-//import androidx.navigation.compose.NavHost
-//import androidx.navigation.compose.composable
-//import androidx.navigation.NavType
-//import androidx.navigation.navArgument
-//import com.workhubui.screens.chat.ChatScreen
-//import com.workhubui.screens.home.HomeScreen
-//
-//
-//@Composable
-//fun AppNavGraph(navController: NavHostController) {
-//    NavHost(
-//        navController = navController,
-//        startDestination = Routes.HOME
-//    ) {
-//        composable(Routes.HOME) {
-//            HomeScreen(navController)
-//        }
-//        composable(
-//            route = Routes.CHAT + "/{currentUser}/{chatWith}",
-//            arguments = listOf(
-//                navArgument("currentUser") { type = NavType.StringType },
-//                navArgument("chatWith") { type = NavType.StringType }
-//            )
-//        ) { backStackEntry ->
-//            val current = backStackEntry.arguments?.getString("currentUser")!!
-//            val chatWith = backStackEntry.arguments?.getString("chatWith")!!
-//            ChatScreen(navController, current, chatWith)
-//        }
-//    }
-//}
 package com.workhubui.navigation
 
 import android.os.Build
 import androidx.annotation.RequiresApi
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier // Added import for Modifier
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -50,16 +17,22 @@ import com.workhubui.screens.chat.ChatListScreen
 import com.workhubui.screens.chat.ChatScreen
 import com.workhubui.screens.home.HomeScreen
 import com.workhubui.screens.setting.SettingScreen
-import com.workhubui.screens.setting.ProfileScreen // Import ProfileScreen
+import com.workhubui.screens.setting.ProfileScreen
 import com.workhubui.screens.vault.VaultScreen
-import com.workhubui.screens.chat.AddFriendScreen // Import AddFriendScreen
+import com.workhubui.screens.chat.AddFriendScreen
+import com.workhubui.screens.auth.AuthViewModel // Import AuthViewModel
 
 @RequiresApi(Build.VERSION_CODES.O)
 @Composable
-fun AppNavGraph(navController: NavHostController, authViewModel: com.workhubui.screens.auth.AuthViewModel) {
+fun AppNavGraph(
+    navController: NavHostController,
+    authViewModel: AuthViewModel, // Added authViewModel parameter
+    modifier: Modifier = Modifier // Added modifier parameter
+) {
     NavHost(
         navController = navController,
-        startDestination = Routes.SPLASH // Bắt đầu từ Splash Screen
+        startDestination = Routes.SPLASH,
+        modifier = modifier // Applied modifier to NavHost
     ) {
         composable(Routes.SPLASH) {
             SplashScreen(navController)
@@ -74,12 +47,12 @@ fun AppNavGraph(navController: NavHostController, authViewModel: com.workhubui.s
             HomeScreen(navController)
         }
 
-        composable(Routes.CHAT_LIST) { // Route cho màn hình danh sách chat
+        composable(Routes.CHAT_LIST) {
             ChatListScreen(navController = navController)
         }
 
         composable(
-            route = Routes.CHAT + "/{currentUser}/{chatWith}", // Route cho chi tiết cuộc trò chuyện
+            route = Routes.CHAT + "/{currentUser}/{chatWith}",
             arguments = listOf(
                 navArgument("currentUser") { type = NavType.StringType },
                 navArgument("chatWith") { type = NavType.StringType }
@@ -94,13 +67,13 @@ fun AppNavGraph(navController: NavHostController, authViewModel: com.workhubui.s
             )
         }
 
-        composable(Routes.VAULT) { // Route cho màn hình Vault
+        composable(Routes.VAULT) {
             VaultScreen()
         }
 
-        composable(Routes.SETTINGS) { // Route cho màn hình Settings
+        composable(Routes.SETTINGS) {
             SettingScreen(
-                navController = navController, // Truyền navController để điều hướng đến Profile
+                navController = navController,
                 onBack = { navController.popBackStack() },
                 onLogout = {
                     authViewModel.logoutUser()
@@ -112,15 +85,12 @@ fun AppNavGraph(navController: NavHostController, authViewModel: com.workhubui.s
             )
         }
 
-        composable(Routes.PROFILE) { // Route cho màn hình Profile
+        composable(Routes.PROFILE) {
             ProfileScreen(navController = navController)
         }
 
-        composable(Routes.ADD_FRIEND) { // Route cho màn hình thêm bạn bè
+        composable(Routes.ADD_FRIEND) {
             AddFriendScreen(navController = navController)
         }
-        // Các route cũ của Schedule và Taskboard sẽ không còn ở đây vì đã tích hợp vào Home
-        // composable(Routes.SCHEDULE) { ScheduleScreen() }
-        // composable(Routes.TASKBOARD) { TaskboardScreen() }
     }
 }
