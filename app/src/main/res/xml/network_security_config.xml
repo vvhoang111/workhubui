@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- Allow cleartext traffic for localhost, useful for development with emulators.
+         Remove or restrict this for production builds. -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">10.0.2.2</domain> <!-- Emulator localhost -->
+        <domain includeSubdomains="true">localhost</domain>
+    </domain-config>
+
+    <!-- You can add more specific domain configurations here -->
+    <!--
+    <domain-config>
+        <domain includeSubdomains="true">your.api.domain.com</domain>
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="user" />
+        </trust-anchors>
+    </domain-config>
+    -->
+
+    <!-- Default config for all other domains -->
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

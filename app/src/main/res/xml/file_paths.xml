@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- This path allows sharing files from your app's cache directory.
+         The "name" attribute can be anything, it's just a label.
+         The "path" attribute specifies the subdirectory within the cache dir.
+         "." means the root of the cache directory. -->
+    <cache-path name="shared_files" path="." />
+
+    <!-- You can also add other paths if needed, for example:
+    <files-path name="internal_files" path="." />
+    <external-path name="external_files" path="." />
+    <external-files-path name="my_external_files" path="." />
+    <external-cache-path name="my_external_cache" path="." />
+    -->
+</paths>
