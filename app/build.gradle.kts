@@ -1,3 +1,4 @@
+// app/build.gradle.kts
 plugins {
     id("com.android.application")
     kotlin("android")
@@ -59,14 +60,12 @@ kapt {
     correctErrorTypes = true // Giúp hiển thị lỗi từ annotation processor chính xác hơn
     arguments {
         // Chỉ định vị trí schema cho Room
+        // Đảm bảo "room.schemaLocation" là argument duy nhất nếu không có các argument Room khác
         arg("room.schemaLocation", "$projectDir/schemas")
-        // QUAN TRỌNG: KHÔNG thêm 'kapt.kotlin.generated' vào đây như một 'arg'.
-        // Kapt tự quản lý thư mục chứa code Kotlin được sinh ra.
+        // ĐÃ XÓA DÒNG `kapt.kotlin.generated` TẠI ĐÂY
     }
-    // Nếu bạn cần tùy chỉnh thư mục output của Kapt (thường không cần thiết):
-    // kotlinSourcesDestinationDir = file("$buildDir/generated/source/kaptKotlin")
-    // nhưng lỗi của bạn không phải về việc không tìm thấy thư mục output,
-    // mà là việc 'kapt.kotlin.generated' bị coi như một "option".
+    // Thuộc tính 'kotlinSourcesDestinationDir' không nên cấu hình thủ công trừ khi có lý do đặc biệt.
+    // kapt tự quản lý thư mục chứa code Kotlin được sinh ra.
 }
 
 dependencies {
@@ -114,10 +113,8 @@ dependencies {
     // Test
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
-    androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
     androidTestImplementation(platform("androidx.compose:compose-bom:2024.06.00")) // Đồng bộ BOM
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 }
-

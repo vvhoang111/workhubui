@@ -4,8 +4,8 @@ import com.workhubui.data.local.dao.VaultFileDao
 import com.workhubui.data.local.entity.VaultFileEntity
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
-import com.workhubui.screens.vault.VaultFile // Assuming VaultFile model is in screens.vault
-import com.workhubui.screens.vault.toModel // Assuming toModel extension is in screens.vault
+import com.workhubui.model.VaultFile // Corrected: Import VaultFile from model package
+import com.workhubui.utils.toModel // Corrected: Import toModel extension from utils package
 
 /**
  * Repository for managing VaultFile data.

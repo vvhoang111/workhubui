@@ -1,3 +1,4 @@
+// app/src/main/java/com/workhubui/data/local/AppDatabase.kt
 package com.workhubui.data.local
 
 import android.content.Context
@@ -72,7 +73,11 @@ abstract class AppDatabase : RoomDatabase() {
         @JvmStatic
         fun getInstance(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
-                val passphraseString = "your-very-secure-and-randomly-generated-passphrase-for-workhub-2025"
+                // CẢNH BÁO BẢO MẬT: Passphrase này đang được hardcode.
+                // TRONG MÔI TRƯỜNG PRODUCTION, KHÔNG BAO GIỜ hardcode passphrase như thế này.
+                // Passphrase NÊN được tạo ngẫu nhiên cho mỗi người dùng, hoặc lấy từ AndroidKeyStore
+                // hoặc được người dùng nhập và lưu trữ/xử lý một cách cực kỳ an toàn.
+                val passphraseString = "12345"
                 val passphrase: ByteArray = passphraseString.toByteArray(StandardCharsets.UTF_8)
                 val factory = SupportFactory(passphrase)
 
@@ -83,7 +88,7 @@ abstract class AppDatabase : RoomDatabase() {
                 )
                     .openHelperFactory(factory)
                     .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4) // Added new migration
-                    // .fallbackToDestructiveMigration() // Avoid if possible, use migrations
+                    // .fallbackToDestructiveMigration() // Tránh sử dụng nếu có thể, dùng migrations
                     .build()
                 INSTANCE = instance
                 instance
