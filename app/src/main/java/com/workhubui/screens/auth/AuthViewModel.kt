@@ -1,3 +1,4 @@
+// File: app/src/main/java/com/workhubui/screens/auth/AuthViewModel.kt
 package com.workhubui.screens.auth
 
 import android.app.Application
@@ -8,6 +9,7 @@ import com.google.firebase.auth.FirebaseAuthInvalidCredentialsException
 import com.google.firebase.auth.FirebaseAuthUserCollisionException
 import com.google.firebase.auth.FirebaseAuthWeakPasswordException
 import com.google.firebase.auth.FirebaseUser
+import com.google.firebase.auth.GoogleAuthProvider // << IMPORT MỚI
 import com.workhubui.data.local.AppDatabase
 import com.workhubui.data.local.entity.UserEntity
 import com.workhubui.data.remote.FirebaseRepository
@@ -27,12 +29,11 @@ sealed class AuthResult {
 
 class AuthViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val firebaseAuthInstance: FirebaseAuth = FirebaseAuth.getInstance() // Renamed to avoid conflict
+    private val firebaseAuthInstance: FirebaseAuth = FirebaseAuth.getInstance()
     private val tokenManager: TokenManager = TokenManager(application.applicationContext)
-    // For saving user to local and remote DB
     private val userDao = AppDatabase.getInstance(application).userDao()
-    private val userRepository = UserRepository(userDao) // For local Room operations
-    private val firebaseRepository = FirebaseRepository() // For Firestore operations
+    private val userRepository = UserRepository(userDao)
+    private val firebaseRepository = FirebaseRepository()
 
 
     private val _authResult = MutableStateFlow<AuthResult>(AuthResult.Idle)
@@ -146,8 +147,52 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    // << HÀM MỚI ĐỂ XỬ LÝ GOOGLE SIGN-IN >>
+    fun signInWithGoogle(idToken: String) {
+        viewModelScope.launch {
+            _authResult.value = AuthResult.Loading
+            val credential = GoogleAuthProvider.getCredential(idToken, null)
+            try {
+                val authResultFirebase = firebaseAuthInstance.signInWithCredential(credential).await()
+                val firebaseUser = authResultFirebase.user
+                if (firebaseUser != null) {
+                    val firebaseIdToken = firebaseUser.getIdToken(true).await().token
+                    if (firebaseIdToken != null) {
+                        tokenManager.saveAccessToken(firebaseIdToken)
+                        _currentUserEmail.value = firebaseUser.email
+                        _currentUser.value = firebaseUser
+
+                        // Kiểm tra xem người dùng đã tồn tại trong DB của mình chưa
+                        val existingUser = userRepository.getUserByUid(firebaseUser.uid)
+                        if (existingUser == null) {
+                            // Nếu chưa, lưu thông tin vào Room và Firestore
+                            val newUserEntity = UserEntity(
+                                uid = firebaseUser.uid,
+                                email = firebaseUser.email,
+                                displayName = firebaseUser.displayName ?: firebaseUser.email?.substringBefore('@'),
+                                photoUrl = firebaseUser.photoUrl?.toString()
+                            )
+                            userRepository.insertUser(newUserEntity)
+                            firebaseRepository.saveUserToFirestore(newUserEntity)
+                        }
+
+                        _authResult.value = AuthResult.Success("Đăng nhập bằng Google thành công!")
+                    } else {
+                        _authResult.value = AuthResult.Error("Không thể lấy token xác thực từ Firebase.")
+                    }
+                } else {
+                    _authResult.value = AuthResult.Error("Xác thực Google với Firebase thất bại.")
+                }
+            } catch (e: Exception) {
+                _authResult.value = AuthResult.Error("Lỗi đăng nhập Google: ${e.localizedMessage}")
+            }
+        }
+    }
+
+
     fun logoutUser() {
         viewModelScope.launch {
+            // TODO: Sign out from Google as well
             firebaseAuthInstance.signOut()
             tokenManager.clearTokens()
             _currentUserEmail.value = null
