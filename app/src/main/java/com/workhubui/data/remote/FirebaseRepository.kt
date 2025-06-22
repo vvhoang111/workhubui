@@ -1,45 +1,139 @@
 package com.workhubui.data.remote
 
-import com.google.firebase.database.FirebaseDatabase
-import com.google.firebase.firestore.FirebaseFirestore
-import com.workhubui.data.local.entity.UserEntity
-import kotlinx.coroutines.tasks.await
 import android.util.Log
+import com.google.firebase.firestore.FieldValue
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.ListenerRegistration
+import com.google.firebase.firestore.Query
+import com.google.firebase.firestore.SetOptions
+import com.workhubui.data.local.entity.UserEntity
+import com.workhubui.model.ChatRoomMetadata
+import com.workhubui.model.FirestoreChatMessage
+import kotlinx.coroutines.tasks.await
 
-// FirebaseRepository để tương tác với Firebase Realtime Database hoặc Firestore.
 class FirebaseRepository {
 
-    private val realtimeDb = FirebaseDatabase.getInstance()
     private val firestoreDb = FirebaseFirestore.getInstance()
+    private val usersCollection = firestoreDb.collection("users")
+    private val chatsCollection = firestoreDb.collection("chats")
+    private val chatRoomsCollection = firestoreDb.collection("chat_rooms")
+    private val TAG = "FirebaseRepoDebug"
 
-    // Hàm để lưu thông tin người dùng lên Firebase (ví dụ: Firestore)
     suspend fun saveUserToFirestore(user: UserEntity) {
         try {
-            firestoreDb.collection("users")
-                .document(user.uid)
-                .set(user)
-                .await()
-            Log.d("FirebaseRepo", "User ${user.email} saved to Firestore successfully.")
+            usersCollection.document(user.uid).set(user, SetOptions.merge()).await()
+            Log.d(TAG, "User ${user.email} saved/updated in Firestore.")
         } catch (e: Exception) {
-            Log.e("FirebaseRepo", "Error saving user to Firestore: ${e.message}", e)
+            Log.e(TAG, "Error saving user to Firestore", e)
             throw e
         }
     }
 
-    // Hàm để lấy thông tin người dùng từ Firestore (ví dụ: khi tìm kiếm bạn bè)
-    suspend fun getUserByEmailFromFirestore(email: String): UserEntity? {
-        return try {
-            val querySnapshot = firestoreDb.collection("users")
-                .whereEqualTo("email", email)
-                .get()
-                .await()
-            querySnapshot.documents.firstOrNull()?.toObject(UserEntity::class.java)
+    suspend fun establishFriendshipAndCreateChatRoom(currentUserUid: String, friendUid: String) {
+        val chatRoomId = if (currentUserUid > friendUid) "$currentUserUid-$friendUid" else "$friendUid-$currentUserUid"
+        val chatRoomRef = chatRoomsCollection.document(chatRoomId)
+        val userDocRef = usersCollection.document(currentUserUid)
+        val friendDocRef = usersCollection.document(friendUid)
+
+        try {
+            firestoreDb.runBatch { batch ->
+                batch.update(userDocRef, "friends", FieldValue.arrayUnion(friendUid))
+                batch.update(friendDocRef, "friends", FieldValue.arrayUnion(currentUserUid))
+
+                // << THAY ĐỔI CỐT LÕI: Truyền `null` thay vì `FieldValue.serverTimestamp()` >>
+                // Chú thích @ServerTimestamp trong model ChatRoomMetadata sẽ tự động xử lý việc này.
+                val metadata = ChatRoomMetadata(
+                    participants = listOf(currentUserUid, friendUid),
+                    lastMessage = "Cuộc trò chuyện đã bắt đầu!",
+                    lastMessageSenderId = "",
+                    lastMessageTimestamp = null // Truyền null để @ServerTimestamp hoạt động
+                )
+                batch.set(chatRoomRef, metadata, SetOptions.merge())
+            }.await()
+            Log.d(TAG, "Friendship and chat room established for $chatRoomId")
         } catch (e: Exception) {
-            Log.e("FirebaseRepo", "Error getting user by email from Firestore: ${e.message}", e)
-            null
+            Log.e(TAG, "Error establishing friendship", e)
+            throw e
         }
     }
 
-    // TODO: Thêm các hàm khác để tương tác với Realtime DB hoặc Storage nếu cần.
-    // Ví dụ: gửi/nhận metadata tin nhắn qua Realtime DB, upload/download file từ Storage.
+    suspend fun sendMessageToFirestore(chatRoomId: String, message: FirestoreChatMessage, lastMessageContent: String) {
+        try {
+            firestoreDb.runBatch { batch ->
+                val messageRef = chatsCollection.document(chatRoomId).collection("messages").document(message.messageId)
+                batch.set(messageRef, message)
+
+                val chatRoomRef = chatRoomsCollection.document(chatRoomId)
+                val metadataUpdate = mapOf(
+                    "lastMessage" to lastMessageContent,
+                    "lastMessageSenderId" to message.senderId,
+                    "lastMessageTimestamp" to FieldValue.serverTimestamp() // Cách này đúng vì đây là Map, không phải data class
+                )
+                batch.set(chatRoomRef, metadataUpdate, SetOptions.merge())
+            }.await()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error sending message and updating metadata", e)
+            throw e
+        }
+    }
+
+    suspend fun getUserProfile(uid: String): UserEntity? {
+        return try {
+            usersCollection.document(uid).get().await().toObject(UserEntity::class.java)
+        } catch (e: Exception) { Log.e(TAG, "Error getting user profile for $uid", e); null }
+    }
+
+    suspend fun getUserByEmailFromFirestore(email: String): UserEntity? {
+        return try {
+            val querySnapshot = usersCollection.whereEqualTo("email", email).get().await()
+            if (querySnapshot.isEmpty) { return null }
+            querySnapshot.documents.firstOrNull()?.toObject(UserEntity::class.java)
+        } catch (e: Exception) { Log.e(TAG, "Error getting user by email", e); null }
+    }
+
+    suspend fun getUserProfiles(uids: List<String>): List<UserEntity> {
+        if (uids.isEmpty()) return emptyList()
+        return try {
+            usersCollection.whereIn("uid", uids).get().await().toObjects(UserEntity::class.java)
+        } catch (e: Exception) { Log.e(TAG, "Error getting user profiles", e); emptyList() }
+    }
+
+    suspend fun updateUserFcmToken(uid: String, token: String) {
+        try {
+            usersCollection.document(uid).update("fcmTokens", FieldValue.arrayUnion(token)).await()
+        } catch (e: Exception) {
+            try {
+                usersCollection.document(uid).set(mapOf("fcmTokens" to listOf(token)), SetOptions.merge()).await()
+            } catch (createError: Exception) { Log.e(TAG, "Error updating/creating FCM token", createError) }
+        }
+    }
+
+    suspend fun getFriendPublicKey(friendUid: String): String? {
+        return try {
+            usersCollection.document(friendUid).get().await().getString("publicKey")
+        } catch (e: Exception) { Log.e(TAG, "Error getting public key for $friendUid", e); null }
+    }
+
+    suspend fun getFriendListUids(userUid: String): List<String> {
+        return try {
+            @Suppress("UNCHECKED_CAST")
+            usersCollection.document(userUid).get().await()["friends"] as? List<String> ?: emptyList()
+        } catch (e: Exception) { Log.e(TAG, "Error getting friend list for $userUid", e); emptyList() }
+    }
+
+    fun getChatRoomsListener(userUid: String, onUpdate: (List<ChatRoomMetadata>) -> Unit): ListenerRegistration {
+        return chatRoomsCollection.whereArrayContains("participants", userUid).orderBy("lastMessageTimestamp", Query.Direction.DESCENDING)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) { Log.e(TAG, "ChatRooms listen failed.", error); return@addSnapshotListener }
+                if (snapshot != null) { onUpdate(snapshot.toObjects(ChatRoomMetadata::class.java)) }
+            }
+    }
+
+    fun getChatMessagesListener(chatRoomId: String, onNewMessages: (List<FirestoreChatMessage>) -> Unit): ListenerRegistration {
+        return chatsCollection.document(chatRoomId).collection("messages").orderBy("timestamp", Query.Direction.ASCENDING)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) { Log.e(TAG, "Listen failed.", error); return@addSnapshotListener }
+                if (snapshot != null) { onNewMessages(snapshot.toObjects(FirestoreChatMessage::class.java)) }
+            }
+    }
 }

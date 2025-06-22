@@ -9,7 +9,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.selection.toggleable // Needed for TaskRow
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
@@ -37,10 +37,11 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.navigation.NavHostController
 import com.workhubui.data.local.AppDatabase
 import com.workhubui.data.local.entity.ScheduleItemEntity
+import com.workhubui.data.remote.FirebaseRepository
 import com.workhubui.data.repository.ChatRepository
 import com.workhubui.model.ChatMessage
-import com.workhubui.screens.Meeting // Ensure this import path is correct for your project
 import com.workhubui.navigation.Routes
+import com.workhubui.screens.Meeting
 import com.workhubui.screens.auth.AuthViewModel
 import com.workhubui.screens.auth.AuthViewModelFactory
 import java.text.SimpleDateFormat
@@ -49,20 +50,12 @@ import java.time.LocalTime
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
-import java.time.format.TextStyle // Needed for Month.getDisplayName
+import java.time.format.TextStyle
 import java.time.temporal.ChronoUnit
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
-// Do NOT import com.workhubui.components.MonthCalendar if using the local version below
 
-// IMPORTANT: This file should ONLY contain the definition for `HomeScreen`
-// and its helper composables/functions.
-// DO NOT define `fun MainScreen()` here.
-
-// --- Utility Functions ---
-// These functions are marked `internal` to limit their scope to this module.
-// If they are used across multiple modules, consider moving them to a common 'utils' package.
 
 internal fun getGreetingInternal(userName: String?): String {
     val calendar = Calendar.getInstance()
@@ -90,7 +83,7 @@ internal fun formatTimeRangeInternal(start: Long, end: Long): String {
     return "${sdf.format(Date(start))} - ${sdf.format(Date(end))}"
 }
 
-@RequiresApi(Build.VERSION_CODES.O) // Required for java.time APIs
+@RequiresApi(Build.VERSION_CODES.O)
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(navController: NavHostController) {
@@ -101,14 +94,18 @@ fun HomeScreen(navController: NavHostController) {
         factory = viewModelFactory {
             initializer {
                 val chatDao = AppDatabase.getInstance(context).chatMessageDao()
-                val chatRepo = ChatRepository(chatDao)
+                val firebaseRepository = FirebaseRepository()
+                val chatRepo = ChatRepository(chatDao, firebaseRepository)
                 HomeViewModel(application, chatRepo)
             }
         }
     )
 
     val authViewModel: AuthViewModel = viewModel(factory = AuthViewModelFactory(application))
-    val currentUserEmail by authViewModel.currentUserEmail.collectAsState()
+
+    // << SỬA LỖI: Lấy đối tượng currentUser và suy ra email từ đó >>
+    val currentUser by authViewModel.currentUser.collectAsState()
+    val currentUserEmail = currentUser?.email
 
     val scheduleList by homeViewModel.scheduleList.collectAsState()
     val recentChats by homeViewModel.recentChats.collectAsState()
@@ -117,15 +114,14 @@ fun HomeScreen(navController: NavHostController) {
 
     var showCreateDialog by remember { mutableStateOf(false) }
 
-    // Sample data for Tasks - THIS SHOULD BE REPLACED WITH DYNAMIC DATA FROM VIEWMODEL
     val tasksForSelectedDate = remember(selectedCalendarDate) {
-        if (selectedCalendarDate == LocalDate.now()) { // Only show sample tasks for today
+        if (selectedCalendarDate == LocalDate.now()) {
             mutableStateListOf(
                 "Tạo wireframes cho ứng dụng (mẫu)",
                 "Xem xét yêu cầu của khách hàng (mẫu)"
             )
         } else {
-            mutableStateListOf<String>() // Empty for other days
+            mutableStateListOf<String>()
         }
     }
     val checkedStates = remember(tasksForSelectedDate) {
@@ -201,7 +197,7 @@ fun HomeScreen(navController: NavHostController) {
 
             RecentChatSection(
                 recentChats = recentChats,
-                currentUser = currentUserEmail ?: "unknown_user_id",
+                currentUser = currentUser?.uid ?: "unknown_user_id",
                 navController = navController
             )
 
@@ -241,7 +237,7 @@ private fun TwoSidedDailyTimeline(
     onDateSelected: (LocalDate) -> Unit
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
-        InternalMonthCalendar( // Using the local version defined below
+        InternalMonthCalendar(
             meetings = meetings,
             selectedDate = selectedDate,
             onDateSelected = onDateSelected,
@@ -358,15 +354,15 @@ private fun RecentChatSection(
             Text("Không có cuộc trò chuyện gần đây.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         } else {
             recentChats.take(3).forEach { chat ->
-                val otherUserEmail = if (chat.sender.equals(currentUser, ignoreCase = true)) chat.receiver else chat.sender
-                if (otherUserEmail.isNotBlank() && !otherUserEmail.equals(currentUser, ignoreCase = true)) {
+                val otherUserId = if (chat.sender == currentUser) chat.receiver else chat.sender
+                if (otherUserId.isNotBlank() && otherUserId != currentUser) {
                     ChatRow(
-                        name = otherUserEmail.substringBefore("@"),
+                        name = otherUserId.substring(0, 5) + "...", // Cần lấy displayName từ UserEntity
                         message = chat.content,
                         time = formatTimestampInternal(chat.timestamp),
                         onClick = {
                             if (currentUser != "unknown_user_id") {
-                                navController.navigate("${Routes.CHAT}/$currentUser/$otherUserEmail")
+                                navController.navigate("${Routes.CHAT}/$currentUser/$otherUserId")
                             }
                         }
                     )
@@ -438,7 +434,6 @@ private fun HomeScreenScheduleCard(item: ScheduleItemEntity) {
     }
 }
 
-// This is the local version of MonthCalendar, ensuring it has the fixed height for LazyVerticalGrid
 @RequiresApi(Build.VERSION_CODES.O)
 @Composable
 private fun InternalMonthCalendar(
@@ -461,7 +456,7 @@ private fun InternalMonthCalendar(
     }
 
     val dayCellHeightEstimate: Dp = 48.dp
-    val numberOfRowsEstimate = 6 // Max rows in a typical month grid
+    val numberOfRowsEstimate = 6
     val calendarGridHeightEstimate = dayCellHeightEstimate * numberOfRowsEstimate
 
     Column(modifier = modifier.fillMaxWidth()) {
@@ -505,7 +500,7 @@ private fun InternalMonthCalendar(
             columns = GridCells.Fixed(7),
             modifier = Modifier
                 .fillMaxWidth()
-                .height(calendarGridHeightEstimate), // CRITICAL: Apply fixed height here
+                .height(calendarGridHeightEstimate),
             userScrollEnabled = false,
             verticalArrangement = Arrangement.spacedBy(2.dp),
             horizontalArrangement = Arrangement.spacedBy(2.dp)

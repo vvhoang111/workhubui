@@ -1,26 +1,52 @@
 {
   "project_info": {
-    "project_number": "170907502083",
-    "project_id": "comworkhubui",
-    "storage_bucket": "comworkhubui.firebasestorage.app"
+    "project_number": "488755766003",
+    "project_id": "workhubui",
+    "storage_bucket": "workhubui.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:170907502083:android:3813d8caf94101c86c7036",
+        "mobilesdk_app_id": "1:488755766003:android:bf55a7c8c22b298ad68d86",
         "android_client_info": {
           "package_name": "com.workhubui"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "488755766003-b3diffb9ghhnn0nlf5ocuhbgcafrjsta.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.workhubui",
+            "certificate_hash": "a3ea00e6d86b64e8c63664070085b204a69b7a00"
+          }
+        },
+        {
+          "client_id": "488755766003-huhducmpsr7t8a5f1dotcjct0185sbut.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.workhubui",
+            "certificate_hash": "c2c4b0f6b4ebb90c8e53a9a6881c57bcd8a515fb"
+          }
+        },
+        {
+          "client_id": "488755766003-ug76qvu4sgs1nghi28bnecidn8jt6rtg.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
-          "current_key": "AIzaSyAcUHb4im2YbSRWcyiATuCqsZwWp5V4TyI"
+          "current_key": "AIzaSyBqzt-XOp19oJSYRchj0-tAkdFm6RvO-tk"
         }
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "488755766003-ug76qvu4sgs1nghi28bnecidn8jt6rtg.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }

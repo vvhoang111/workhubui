@@ -9,12 +9,12 @@ plugins {
 
 android {
     namespace = "com.workhubui"
-    compileSdk = 36 // Giữ nguyên hoặc đảm bảo đây là phiên bản bạn muốn
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.workhubui"
         minSdk = 27
-        targetSdk = 34 // Cân nhắc nâng cấp lên 36 nếu compileSdk là 36
+        targetSdk = 34
         versionCode = 1
         versionName = "1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -35,7 +35,7 @@ android {
     }
 
     composeOptions {
-        kotlinCompilerExtensionVersion = "1.5.11" // Đảm bảo phiên bản này tương thích
+        kotlinCompilerExtensionVersion = "1.5.11"
     }
 
     compileOptions {
@@ -56,16 +56,14 @@ android {
     }
 }
 
+// << KHỐI KAPT ĐÃ ĐƯỢC SỬA LẠI CHÍNH XÁC >>
 kapt {
-    correctErrorTypes = true // Giúp hiển thị lỗi từ annotation processor chính xác hơn
+    correctErrorTypes = true
     arguments {
-        // Chỉ định vị trí schema cho Room
-        // Đảm bảo "room.schemaLocation" là argument duy nhất nếu không có các argument Room khác
+        // Cú pháp đúng để chỉ định vị trí schema cho Room.
+        // Tùy chọn 'kapt.kotlin.generated' đã được xóa vì không cần thiết.
         arg("room.schemaLocation", "$projectDir/schemas")
-        // ĐÃ XÓA DÒNG `kapt.kotlin.generated` TẠI ĐÂY
     }
-    // Thuộc tính 'kotlinSourcesDestinationDir' không nên cấu hình thủ công trừ khi có lý do đặc biệt.
-    // kapt tự quản lý thư mục chứa code Kotlin được sinh ra.
 }
 
 dependencies {
@@ -75,17 +73,17 @@ dependencies {
     implementation("androidx.activity:activity-compose:1.9.0")
 
     // Compose BOM
-    implementation(platform("androidx.compose:compose-bom:2024.06.00")) // Sử dụng BOM mới nhất hoặc phiên bản bạn đã chọn (ví dụ 2025.05.01)
+    implementation(platform("androidx.compose:compose-bom:2024.06.00"))
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-graphics")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-core")
     implementation("androidx.compose.material:material-icons-extended")
-    implementation("androidx.navigation:navigation-compose:2.7.7") // Hoặc phiên bản mới hơn nếu có
+    implementation("androidx.navigation:navigation-compose:2.7.7")
 
     // Firebase BOM
-    implementation(platform("com.google.firebase:firebase-bom:33.0.0")) // Sử dụng Firebase BOM mới nhất
+    implementation(platform("com.google.firebase:firebase-bom:33.0.0"))
     implementation("com.google.firebase:firebase-auth-ktx")
     implementation("com.google.firebase:firebase-database-ktx")
     implementation("com.google.firebase:firebase-firestore-ktx")
@@ -96,24 +94,31 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
     // Biometric
-    implementation("androidx.biometric:biometric:1.2.0-alpha05") // Cân nhắc bản stable nếu có
+    implementation("androidx.biometric:biometric:1.2.0-alpha05")
 
     // Room (SQLCipher)
     implementation("androidx.room:room-runtime:2.6.1")
-    kapt("androidx.room:room-compiler:2.6.1") // Annotation processor cho Room
+    kapt("androidx.room:room-compiler:2.6.1")
     implementation("androidx.room:room-ktx:2.6.1")
-    implementation("net.zetetic:android-database-sqlcipher:4.5.4") // Kiểm tra phiên bản mới nhất
+    implementation("net.zetetic:android-database-sqlcipher:4.5.4")
 
     // Security Crypto
-    implementation("androidx.security:security-crypto:1.1.0-alpha06") // Cân nhắc bản stable
+    implementation("androidx.security:security-crypto:1.1.0-alpha06")
 
     // Coil
-    implementation("io.coil-kt:coil-compose:2.6.0") // Cập nhật Coil
+    implementation("io.coil-kt:coil-compose:2.6.0")
+
+    // Google Sign-In & Credential Manager
+    implementation("com.google.android.gms:play-services-auth:21.2.0")
+    implementation("androidx.credentials:credentials:1.2.2")
+    implementation("androidx.credentials:credentials-play-services-auth:1.2.2")
+    implementation("com.google.android.libraries.identity.googleid:googleid:1.1.0")
+
 
     // Test
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
-    androidTestImplementation(platform("androidx.compose:compose-bom:2024.06.00")) // Đồng bộ BOM
+    androidTestImplementation(platform("androidx.compose:compose-bom:2024.06.00"))
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")

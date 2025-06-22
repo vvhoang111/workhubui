@@ -6,7 +6,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -15,14 +14,16 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
-import com.workhubui.model.ChatMessage // Đảm bảo import đúng
+import com.workhubui.model.ChatMessage
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ChatScreen(navController: NavHostController, currentUser: String, chatWith: String) {
+// << THAY ĐỔI: Nhận UID thay vì email >>
+fun ChatScreen(navController: NavHostController, currentUserUid: String, friendUid: String) {
     val application = LocalContext.current.applicationContext as Application
+    // << THAY ĐỔI: Sử dụng Factory mới với UID >>
     val vm: ChatViewModel = viewModel(
-        factory = ChatViewModelFactory(application, currentUser, chatWith) // Truyền currentUser và chatWith
+        factory = ChatViewModelFactory(application, currentUserUid, friendUid)
     )
 
     val messages by vm.messages.collectAsState()
@@ -31,7 +32,8 @@ fun ChatScreen(navController: NavHostController, currentUser: String, chatWith: 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(text = "Chat with $chatWith") },
+                // Có thể hiển thị tên bạn bè ở đây thay vì UID
+                title = { Text(text = "Chat") },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -50,12 +52,12 @@ fun ChatScreen(navController: NavHostController, currentUser: String, chatWith: 
                     value = text,
                     onValueChange = { text = it },
                     modifier = Modifier.weight(1f),
-                    placeholder = { Text("Type a message") }
+                    placeholder = { Text("Type an encrypted message") }
                 )
                 Spacer(Modifier.width(8.dp))
                 Button(onClick = {
                     if (text.isNotBlank()) {
-                        vm.sendMessage(text) // Không cần truyền currentUser và chatWith nữa
+                        vm.sendMessage(text)
                         text = ""
                     }
                 }) {
@@ -68,33 +70,34 @@ fun ChatScreen(navController: NavHostController, currentUser: String, chatWith: 
             modifier = Modifier
                 .padding(padding)
                 .fillMaxSize()
-                .padding(horizontal = 8.dp), // Thêm padding ngang cho đẹp hơn
-            reverseLayout = true // Để tin nhắn mới nhất ở dưới cùng và tự cuộn xuống
+                .padding(horizontal = 8.dp),
+            reverseLayout = true
         ) {
-            items(messages.reversed()) { msg -> // Đảo ngược danh sách để hiển thị đúng thứ tự với reverseLayout
-                MessageRow(msg, currentUser)
+            items(messages.reversed()) { msg ->
+                MessageRow(msg, currentUserUid)
             }
         }
     }
 }
 
 @Composable
-fun MessageRow(msg: ChatMessage, currentUser: String) {
-    val isMe = msg.sender == currentUser
+fun MessageRow(msg: ChatMessage, currentUserUid: String) {
+    val isMe = msg.sender == currentUserUid
+    // ... phần còn lại của MessageRow giữ nguyên
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 4.dp, horizontal = 8.dp), // Điều chỉnh padding
+            .padding(vertical = 4.dp, horizontal = 8.dp),
         horizontalArrangement = if (isMe) Arrangement.End else Arrangement.Start
     ) {
         Surface(
             color = if (isMe) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
             shape = MaterialTheme.shapes.medium,
-            tonalElevation = 2.dp // Thêm chút độ nổi cho tin nhắn
+            tonalElevation = 2.dp
         ) {
             Text(
                 text = msg.content,
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp), // Điều chỉnh padding
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                 style = MaterialTheme.typography.bodyMedium
             )
         }

@@ -1,6 +1,8 @@
 package com.workhubui.screens.auth
 
 import android.app.Application
+import android.util.Base64
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.firebase.auth.FirebaseAuth
@@ -8,93 +10,68 @@ import com.google.firebase.auth.FirebaseAuthInvalidCredentialsException
 import com.google.firebase.auth.FirebaseAuthUserCollisionException
 import com.google.firebase.auth.FirebaseAuthWeakPasswordException
 import com.google.firebase.auth.FirebaseUser
+import com.google.firebase.auth.GoogleAuthProvider
+import com.google.firebase.messaging.FirebaseMessaging
 import com.workhubui.data.local.AppDatabase
 import com.workhubui.data.local.entity.UserEntity
 import com.workhubui.data.remote.FirebaseRepository
+import com.workhubui.data.repository.ChatRepository
 import com.workhubui.data.repository.UserRepository
+import com.workhubui.security.CryptoManager
 import com.workhubui.security.TokenManager
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
-
-sealed class AuthResult {
-    object Idle : AuthResult()
-    object Loading : AuthResult()
-    data class Success(val message: String? = null) : AuthResult()
-    data class Error(val errorMessage: String) : AuthResult()
-}
+import kotlinx.coroutines.withContext
 
 class AuthViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val firebaseAuthInstance: FirebaseAuth = FirebaseAuth.getInstance() // Renamed to avoid conflict
+    private val firebaseAuthInstance: FirebaseAuth = FirebaseAuth.getInstance()
     private val tokenManager: TokenManager = TokenManager(application.applicationContext)
-    // For saving user to local and remote DB
-    private val userDao = AppDatabase.getInstance(application).userDao()
-    private val userRepository = UserRepository(userDao) // For local Room operations
-    private val firebaseRepository = FirebaseRepository() // For Firestore operations
 
+    private val userDao = AppDatabase.getInstance(application).userDao()
+    private val chatMessageDao = AppDatabase.getInstance(application).chatMessageDao()
+    private val userRepository = UserRepository(userDao)
+    private val firebaseRepository = FirebaseRepository()
+    private val chatRepository = ChatRepository(chatMessageDao, firebaseRepository)
+    private val cryptoManager = CryptoManager()
 
     private val _authResult = MutableStateFlow<AuthResult>(AuthResult.Idle)
-    val authResult: StateFlow<AuthResult> = _authResult
-
-    private val _currentUserEmail = MutableStateFlow<String?>(null)
-    val currentUserEmail: StateFlow<String?> = _currentUserEmail
+    val authResult: StateFlow<AuthResult> = _authResult.asStateFlow()
 
     private val _currentUser = MutableStateFlow<FirebaseUser?>(null)
-    val currentUser: StateFlow<FirebaseUser?> = _currentUser
+    val currentUser: StateFlow<FirebaseUser?> = _currentUser.asStateFlow()
 
     init {
-        checkCurrentUser()
-    }
-
-    private fun checkCurrentUser() {
-        val firebaseUser = firebaseAuthInstance.currentUser
-        val token = tokenManager.getAccessToken()
-
-        if (firebaseUser != null && token != null) {
-            _currentUserEmail.value = firebaseUser.email
-            _currentUser.value = firebaseUser
-        } else {
-            if (firebaseUser == null || token == null) {
-                tokenManager.clearTokens()
-                _currentUserEmail.value = null
-                _currentUser.value = null
-            }
-        }
+        _currentUser.value = firebaseAuthInstance.currentUser
     }
 
     fun isLoggedIn(): Boolean {
-        return firebaseAuthInstance.currentUser != null && tokenManager.getAccessToken() != null
+        return _currentUser.value != null && tokenManager.getAccessToken() != null
+    }
+
+    private suspend fun handleSuccessfulLogin(firebaseUser: FirebaseUser) {
+        _currentUser.value = firebaseUser
+        tokenManager.saveAccessToken(firebaseUser.getIdToken(true).await().token!!)
+        updateFcmToken(firebaseUser.uid)
+        syncUserKeysAndData(firebaseUser)
+        _authResult.value = AuthResult.Success("Đăng nhập thành công!")
     }
 
     fun loginUser(email: String, password: String) {
         viewModelScope.launch {
             _authResult.value = AuthResult.Loading
             if (email.isBlank() || password.isBlank()) {
-                _authResult.value = AuthResult.Error("Email và mật khẩu không được để trống.")
-                return@launch
+                _authResult.value = AuthResult.Error("Email và mật khẩu không được để trống."); return@launch
             }
             try {
                 val authResultFirebase = firebaseAuthInstance.signInWithEmailAndPassword(email, password).await()
-                val firebaseUser = authResultFirebase.user
-                if (firebaseUser != null) {
-                    val idToken = firebaseUser.getIdToken(true).await().token
-                    if (idToken != null) {
-                        tokenManager.saveAccessToken(idToken)
-                        _currentUserEmail.value = firebaseUser.email
-                        _currentUser.value = firebaseUser
-                        _authResult.value = AuthResult.Success("Đăng nhập thành công!")
-                    } else {
-                        _authResult.value = AuthResult.Error("Không thể lấy token xác thực.")
-                    }
-                } else {
-                    _authResult.value = AuthResult.Error("Đăng nhập thất bại. Vui lòng thử lại.")
-                }
-            } catch (e: FirebaseAuthInvalidCredentialsException) {
-                _authResult.value = AuthResult.Error("Email hoặc mật khẩu không đúng.")
+                handleSuccessfulLogin(authResultFirebase.user!!)
             } catch (e: Exception) {
-                _authResult.value = AuthResult.Error("Lỗi đăng nhập: ${e.localizedMessage ?: "Vui lòng thử lại."}")
+                _authResult.value = AuthResult.Error("Lỗi đăng nhập: ${e.localizedMessage}")
             }
         }
     }
@@ -103,56 +80,100 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             _authResult.value = AuthResult.Loading
             if (email.isBlank() || password.isBlank()) {
-                _authResult.value = AuthResult.Error("Email và mật khẩu không được để trống.")
-                return@launch
+                _authResult.value = AuthResult.Error("Email và mật khẩu không được để trống."); return@launch
             }
             try {
                 val authResultFirebase = firebaseAuthInstance.createUserWithEmailAndPassword(email, password).await()
-                val firebaseUser = authResultFirebase.user
-                if (firebaseUser != null) {
-                    val idToken = firebaseUser.getIdToken(true).await().token
-                    if (idToken != null) {
-                        tokenManager.saveAccessToken(idToken)
-                        _currentUserEmail.value = firebaseUser.email
-                        _currentUser.value = firebaseUser
+                _currentUser.value = authResultFirebase.user
+                val firebaseUser = authResultFirebase.user!!
 
-                        // Save user to local Room and Firebase Firestore
-                        val newUserEntity = UserEntity(
-                            uid = firebaseUser.uid,
-                            email = firebaseUser.email,
-                            displayName = firebaseUser.email?.substringBefore('@'), // Default display name
-                            photoUrl = null
-                        )
-                        userRepository.insertUser(newUserEntity) // Save to Room
-                        firebaseRepository.saveUserToFirestore(newUserEntity) // Save to Firestore
+                tokenManager.saveAccessToken(firebaseUser.getIdToken(true).await().token!!)
 
+                val keyPair = cryptoManager.getOrCreateUserKeyPair(firebaseUser.uid)
+                val publicKeyString = Base64.encodeToString(keyPair.public.encoded, Base64.DEFAULT)
 
-                        _authResult.value = AuthResult.Success("Đăng ký thành công! Đang đăng nhập...")
-                    } else {
-                        _authResult.value = AuthResult.Error("Đăng ký thành công nhưng không thể lấy token.")
-                    }
-                } else {
-                    _authResult.value = AuthResult.Error("Đăng ký thất bại. Vui lòng thử lại.")
-                }
-            } catch (e: FirebaseAuthWeakPasswordException) {
-                _authResult.value = AuthResult.Error("Mật khẩu quá yếu. Vui lòng chọn mật khẩu mạnh hơn (ít nhất 6 ký tự).")
-            } catch (e: FirebaseAuthInvalidCredentialsException) {
-                _authResult.value = AuthResult.Error("Địa chỉ email không hợp lệ.")
-            } catch (e: FirebaseAuthUserCollisionException) {
-                _authResult.value = AuthResult.Error("Địa chỉ email này đã được sử dụng.")
+                val newUserEntity = UserEntity(
+                    uid = firebaseUser.uid, email = firebaseUser.email,
+                    displayName = firebaseUser.email?.substringBefore('@'), photoUrl = null,
+                    publicKey = publicKeyString, friends = emptyList()
+                )
+                userRepository.insertUser(newUserEntity)
+                firebaseRepository.saveUserToFirestore(newUserEntity)
+                updateFcmToken(firebaseUser.uid)
+                _authResult.value = AuthResult.Success("Đăng ký thành công!")
             } catch (e: Exception) {
-                _authResult.value = AuthResult.Error("Lỗi đăng ký: ${e.localizedMessage ?: "Vui lòng thử lại."}")
+                _authResult.value = AuthResult.Error("Lỗi đăng ký: ${e.localizedMessage}")
             }
+        }
+    }
+
+    fun signInWithGoogle(idToken: String) {
+        viewModelScope.launch {
+            _authResult.value = AuthResult.Loading
+            val credential = GoogleAuthProvider.getCredential(idToken, null)
+            try {
+                val authResultFirebase = firebaseAuthInstance.signInWithCredential(credential).await()
+                handleSuccessfulLogin(authResultFirebase.user!!)
+            } catch (e: Exception) {
+                _authResult.value = AuthResult.Error("Lỗi đăng nhập Google: ${e.localizedMessage}")
+            }
+        }
+    }
+
+    private suspend fun syncUserKeysAndData(firebaseUser: FirebaseUser) {
+        val uid = firebaseUser.uid
+        withContext(Dispatchers.IO) {
+            val localKeyPair = cryptoManager.getOrCreateUserKeyPair(uid)
+            val localPublicKeyString = Base64.encodeToString(localKeyPair.public.encoded, Base64.DEFAULT)
+
+            var userProfile = firebaseRepository.getUserProfile(uid)
+
+            if (userProfile == null || userProfile.publicKey != localPublicKeyString) {
+                Log.d("AuthViewModel", "Creating/updating user profile in Firestore.")
+                val newUserEntity = UserEntity(
+                    uid = uid,
+                    email = firebaseUser.email,
+                    displayName = firebaseUser.displayName ?: firebaseUser.email?.substringBefore('@'),
+                    photoUrl = firebaseUser.photoUrl?.toString(),
+                    publicKey = localPublicKeyString,
+                    friends = userProfile?.friends ?: emptyList()
+                )
+                firebaseRepository.saveUserToFirestore(newUserEntity)
+                userProfile = newUserEntity
+            }
+
+            val friendUids = userProfile.friends
+            if (friendUids.isNotEmpty()) {
+                val friendProfiles = firebaseRepository.getUserProfiles(friendUids)
+                userRepository.clearUsers()
+                userRepository.insertUsers(friendProfiles + userProfile)
+            } else {
+                userRepository.clearUsers()
+                userRepository.insertUsers(listOf(userProfile))
+            }
+            Log.d("AuthViewModel", "User data sync complete.")
         }
     }
 
     fun logoutUser() {
         viewModelScope.launch {
+            withContext(Dispatchers.IO) {
+                userRepository.clearUsers()
+                chatRepository.clearChatMessages()
+            }
             firebaseAuthInstance.signOut()
             tokenManager.clearTokens()
-            _currentUserEmail.value = null
             _currentUser.value = null
             _authResult.value = AuthResult.Idle
+        }
+    }
+
+    private fun updateFcmToken(uid: String) {
+        FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
+            if (!task.isSuccessful) {
+                Log.w("AuthViewModel", "Fetching FCM token failed", task.exception); return@addOnCompleteListener
+            }
+            viewModelScope.launch { firebaseRepository.updateUserFcmToken(uid, task.result) }
         }
     }
 

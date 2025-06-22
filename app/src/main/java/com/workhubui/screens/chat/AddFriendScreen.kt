@@ -1,11 +1,10 @@
 package com.workhubui.screens.chat
 
 import android.app.Application
+import android.util.Log
 import android.widget.Toast
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -14,10 +13,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -26,17 +24,17 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavHostController
+import com.google.firebase.auth.FirebaseAuth
 import com.workhubui.data.local.AppDatabase
 import com.workhubui.data.remote.FirebaseRepository
 import com.workhubui.data.repository.UserRepository
-import com.workhubui.screens.auth.AuthViewModel
-import com.workhubui.screens.auth.AuthViewModelFactory
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import androidx.navigation.NavHostController
 
-// ViewModel cho màn hình AddFriend
+// ViewModel cho màn hình Thêm bạn
 class AddFriendViewModel(
     application: Application,
     private val userRepository: UserRepository,
@@ -44,28 +42,40 @@ class AddFriendViewModel(
 ) : AndroidViewModel(application) {
 
     private val _addFriendStatus = MutableStateFlow<String?>(null)
-    val addFriendStatus: StateFlow<String?> = _addFriendStatus
+    val addFriendStatus: StateFlow<String?> = _addFriendStatus.asStateFlow()
 
-    fun addFriendByEmail(email: String, currentUserEmail: String?) {
+    // Hàm tìm kiếm, kết bạn và tạo phòng chat
+    fun establishFriendship(friendEmail: String, currentUserUid: String) {
         viewModelScope.launch {
-            if (email.isBlank() || email == currentUserEmail) {
-                _addFriendStatus.value = "Email không hợp lệ hoặc là email của bạn."
+            if (friendEmail.isBlank()) {
+                _addFriendStatus.value = "Email không được để trống."
+                return@launch
+            }
+            val ownEmail = FirebaseAuth.getInstance().currentUser?.email
+            if (friendEmail.equals(ownEmail, ignoreCase = true)) {
+                _addFriendStatus.value = "Bạn không thể tự kết bạn với chính mình."
                 return@launch
             }
 
-            _addFriendStatus.value = "Đang tìm kiếm..."
+            _addFriendStatus.value = "Đang xử lý..."
             try {
-                val friendUserEntity = firebaseRepository.getUserByEmailFromFirestore(email)
+                // Tìm người dùng trên Firestore
+                val friendUserEntity = firebaseRepository.getUserByEmailFromFirestore(friendEmail)
 
                 if (friendUserEntity != null) {
+                    // Gọi hàm mới để tạo mối quan hệ bạn bè và phòng chat
+                    firebaseRepository.establishFriendshipAndCreateChatRoom(currentUserUid, friendUserEntity.uid)
+
+                    // Lưu hồ sơ bạn bè vào DB cục bộ để UI cập nhật ngay
                     userRepository.insertUser(friendUserEntity)
-                    _addFriendStatus.value =
-                        "Đã thêm ${friendUserEntity.displayName ?: friendUserEntity.email} vào danh sách bạn bè!"
+
+                    _addFriendStatus.value = "Đã thêm ${friendUserEntity.displayName ?: friendUserEntity.email} thành công!"
                 } else {
                     _addFriendStatus.value = "Không tìm thấy người dùng với email này."
                 }
             } catch (e: Exception) {
                 _addFriendStatus.value = "Lỗi khi thêm bạn bè: ${e.localizedMessage}"
+                Log.e("AddFriendDebug", "Error in ViewModel", e)
             }
         }
     }
@@ -89,39 +99,48 @@ class AddFriendViewModelFactory(private val application: Application) : ViewMode
     }
 }
 
+// Giao diện người dùng
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddFriendScreen(navController: NavHostController) {
     val application = LocalContext.current.applicationContext as Application
-    val authViewModel: AuthViewModel = viewModel(factory = AuthViewModelFactory(application))
-    val currentUserEmail by authViewModel.currentUserEmail.collectAsState()
-
+    val currentUserUid = FirebaseAuth.getInstance().currentUser?.uid
     val addFriendViewModel: AddFriendViewModel = viewModel(factory = AddFriendViewModelFactory(application))
     val addFriendStatus by addFriendViewModel.addFriendStatus.collectAsState()
 
-    val friendEmailState = remember { mutableStateOf("") }
+    var friendEmail by remember { mutableStateOf("") }
     val context = LocalContext.current
 
     LaunchedEffect(addFriendStatus) {
         addFriendStatus?.let { status ->
             Toast.makeText(context, status, Toast.LENGTH_LONG).show()
+            // Sau khi thêm thành công, quay lại màn hình danh sách chat
+            if (status.contains("thành công")) {
+                navController.popBackStack()
+            }
             addFriendViewModel.clearStatus()
+        }
+    }
+
+    fun handleAddFriendClick() {
+        if (currentUserUid != null) {
+            addFriendViewModel.establishFriendship(friendEmail.trim(), currentUserUid)
+        } else {
+            Toast.makeText(context, "Không thể xác thực người dùng hiện tại.", Toast.LENGTH_SHORT).show()
         }
     }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Thêm bạn bè") },
+                title = { Text("Thêm bạn bè & Bắt đầu chat") },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Quay lại")
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                    navigationIconContentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant
                 )
             )
         }
@@ -142,35 +161,23 @@ fun AddFriendScreen(navController: NavHostController) {
             )
             Spacer(Modifier.height(24.dp))
 
-            BasicTextField(
-                value = friendEmailState.value,
-                onValueChange = { friendEmailState.value = it },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .border(1.dp, Color.Gray, RoundedCornerShape(4.dp))
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                textStyle = TextStyle.Default.copy(fontSize = 16.sp),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
-                decorationBox = { innerTextField ->
-                    Box(modifier = Modifier.fillMaxWidth()) {
-                        if (friendEmailState.value.isEmpty()) {
-                            Text(
-                                text = "Email của bạn bè",
-                                color = Color.Gray,
-                                fontSize = 16.sp
-                            )
-                        }
-                        innerTextField()
-                    }
-                }
+            OutlinedTextField(
+                value = friendEmail,
+                onValueChange = { friendEmail = it },
+                label = { Text("Email của người bạn muốn chat") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Email,
+                    imeAction = ImeAction.Done
+                ),
+                keyboardActions = KeyboardActions(onDone = { handleAddFriendClick() })
             )
 
             Spacer(Modifier.height(16.dp))
 
             Button(
-                onClick = {
-                    addFriendViewModel.addFriendByEmail(friendEmailState.value, currentUserEmail)
-                },
+                onClick = { handleAddFriendClick() },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(50.dp)

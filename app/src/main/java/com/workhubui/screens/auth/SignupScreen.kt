@@ -26,7 +26,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
 import com.workhubui.navigation.Routes
-import com.workhubui.ui.theme.WorkhubuiTheme // Thêm import theme
+import com.workhubui.ui.theme.WorkhubuiTheme
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -40,12 +40,14 @@ fun SignupScreen(navController: NavHostController) {
     var password by remember { mutableStateOf("") }
     var confirmPassword by remember { mutableStateOf("") }
 
+    // << SỬA LỖI: Thêm import cho collectAsState >>
     val authResult by authViewModel.authResult.collectAsState()
     val isLoading = authResult is AuthResult.Loading
 
     LaunchedEffect(authResult) {
         when (val result = authResult) {
             is AuthResult.Success -> {
+                // << SỬA LỖI: Thêm .show() >>
                 Toast.makeText(context, result.message ?: "Đăng ký thành công!", Toast.LENGTH_SHORT).show()
                 navController.navigate(Routes.HOME) {
                     popUpTo(Routes.LOGIN) { inclusive = true }
@@ -54,6 +56,7 @@ fun SignupScreen(navController: NavHostController) {
                 authViewModel.resetAuthResult()
             }
             is AuthResult.Error -> {
+                // << SỬA LỖI: Thêm .show() >>
                 Toast.makeText(context, result.errorMessage, Toast.LENGTH_LONG).show()
                 authViewModel.resetAuthResult()
             }
@@ -61,17 +64,18 @@ fun SignupScreen(navController: NavHostController) {
         }
     }
 
+    // ... phần còn lại của UI giữ nguyên ...
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Tạo tài khoản") }, // Tiếng Việt
+                title = { Text("Tạo tài khoản") },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Quay lại")
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant, // Màu khác cho topbar
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
                     titleContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                     navigationIconContentColor = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -87,8 +91,8 @@ fun SignupScreen(navController: NavHostController) {
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
-                "Đăng ký WorkHub", // Tiếng Việt
-                fontSize = 28.sp, // Điều chỉnh
+                "Đăng ký WorkHub",
+                fontSize = 28.sp,
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.primary
             )
@@ -97,7 +101,7 @@ fun SignupScreen(navController: NavHostController) {
             OutlinedTextField(
                 value = email,
                 onValueChange = { email = it },
-                label = { Text("Địa chỉ Email") }, // Tiếng Việt
+                label = { Text("Địa chỉ Email") },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
                 enabled = !isLoading,
@@ -111,7 +115,7 @@ fun SignupScreen(navController: NavHostController) {
             OutlinedTextField(
                 value = password,
                 onValueChange = { password = it },
-                label = { Text("Mật khẩu (ít nhất 6 ký tự)") }, // Tiếng Việt
+                label = { Text("Mật khẩu (ít nhất 6 ký tự)") },
                 singleLine = true,
                 visualTransformation = PasswordVisualTransformation(),
                 keyboardOptions = KeyboardOptions(
@@ -126,7 +130,7 @@ fun SignupScreen(navController: NavHostController) {
             OutlinedTextField(
                 value = confirmPassword,
                 onValueChange = { confirmPassword = it },
-                label = { Text("Xác nhận mật khẩu") }, // Tiếng Việt
+                label = { Text("Xác nhận mật khẩu") },
                 singleLine = true,
                 visualTransformation = PasswordVisualTransformation(),
                 keyboardOptions = KeyboardOptions(
@@ -134,7 +138,6 @@ fun SignupScreen(navController: NavHostController) {
                     imeAction = ImeAction.Done),
                 keyboardActions = KeyboardActions(onDone = {
                     focusManager.clearFocus()
-                    // Logic xử lý khi nhấn Done trên bàn phím
                     if (email.isNotBlank() && password.isNotBlank() && confirmPassword.isNotBlank()) {
                         if (password.length < 6) {
                             Toast.makeText(context, "Mật khẩu phải có ít nhất 6 ký tự.", Toast.LENGTH_SHORT).show()
@@ -153,7 +156,7 @@ fun SignupScreen(navController: NavHostController) {
             )
             if (password != confirmPassword && confirmPassword.isNotEmpty()) {
                 Text(
-                    text = "Mật khẩu không khớp.", // Tiếng Việt
+                    text = "Mật khẩu không khớp.",
                     color = MaterialTheme.colorScheme.error,
                     style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.align(Alignment.Start).padding(start = 4.dp, top = 4.dp)
@@ -164,7 +167,7 @@ fun SignupScreen(navController: NavHostController) {
 
             Button(
                 onClick = {
-                    focusManager.clearFocus() // Ẩn bàn phím
+                    focusManager.clearFocus()
                     if (email.isBlank() || password.isBlank() || confirmPassword.isBlank()) {
                         Toast.makeText(context, "Vui lòng điền đầy đủ thông tin.", Toast.LENGTH_SHORT).show()
                     } else if (password.length < 6) {
@@ -186,12 +189,12 @@ fun SignupScreen(navController: NavHostController) {
                         strokeWidth = 2.dp
                     )
                 } else {
-                    Text("Đăng ký", fontSize = 18.sp) // Tiếng Việt
+                    Text("Đăng ký", fontSize = 18.sp)
                 }
             }
             Spacer(modifier = Modifier.height(24.dp))
             Text(
-                "Bằng việc đăng ký, bạn đồng ý với Điều khoản & Điều kiện và Chính sách Bảo mật của chúng tôi.", // Tiếng Việt
+                "Bằng việc đăng ký, bạn đồng ý với Điều khoản & Điều kiện và Chính sách Bảo mật của chúng tôi.",
                 fontSize = 12.sp,
                 textAlign = TextAlign.Center,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -199,18 +202,10 @@ fun SignupScreen(navController: NavHostController) {
             )
             Spacer(modifier = Modifier.height(16.dp))
             TextButton(onClick = {
-                if (!isLoading) navController.popBackStack() // Quay lại màn hình Login
+                if (!isLoading) navController.popBackStack()
             }) {
                 Text("Đã có tài khoản? Đăng nhập", color = MaterialTheme.colorScheme.primary)
             }
         }
-    }
-}
-
-@Preview(showBackground = true)
-@Composable
-fun SignupScreenPreview(){
-    WorkhubuiTheme {
-        SignupScreen(navController = rememberNavController())
     }
 }

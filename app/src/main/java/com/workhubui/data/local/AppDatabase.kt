@@ -1,21 +1,19 @@
-// app/src/main/java/com/workhubui/data/local/AppDatabase.kt
 package com.workhubui.data.local
 
 import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
-import androidx.room.migration.Migration
-import androidx.sqlite.db.SupportSQLiteDatabase
+import androidx.room.TypeConverters
 import com.workhubui.data.local.dao.ChatMessageDao
 import com.workhubui.data.local.dao.ScheduleDao
 import com.workhubui.data.local.dao.UserDao
-import com.workhubui.data.local.dao.VaultFileDao // Import VaultFileDao
-import com.workhubui.model.ChatMessage
+import com.workhubui.data.local.dao.VaultFileDao
 import com.workhubui.data.local.entity.ScheduleItemEntity
 import com.workhubui.data.local.entity.UserEntity
-import com.workhubui.data.local.entity.VaultFileEntity // Import VaultFileEntity
-import net.sqlcipher.database.SupportFactory // SQLCipher support
+import com.workhubui.data.local.entity.VaultFileEntity
+import com.workhubui.model.ChatMessage
+import net.sqlcipher.database.SupportFactory
 import java.nio.charset.StandardCharsets
 
 @Database(
@@ -23,60 +21,26 @@ import java.nio.charset.StandardCharsets
         ChatMessage::class,
         ScheduleItemEntity::class,
         UserEntity::class,
-        VaultFileEntity::class // Added VaultFileEntity
+        VaultFileEntity::class
     ],
-    version = 4, // Incremented version for the new table
-    exportSchema = true
+    version = 7, // Tăng version lên để kích hoạt migration
+    exportSchema = false // Tắt export schema cho đơn giản
 )
+@TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
 
     abstract fun chatMessageDao(): ChatMessageDao
     abstract fun scheduleDao(): ScheduleDao
     abstract fun userDao(): UserDao
-    abstract fun vaultFileDao(): VaultFileDao // Added DAO for VaultFile
+    abstract fun vaultFileDao(): VaultFileDao
 
     companion object {
         @Volatile
         private var INSTANCE: AppDatabase? = null
 
-        // Migration from 1 to 2 (if you had it before for ScheduleItemEntity)
-        val MIGRATION_1_2: Migration = object : Migration(1, 2) {
-            override fun migrate(db: SupportSQLiteDatabase) {
-                // SQL for migrating from version 1 to 2
-                // e.g., db.execSQL("ALTER TABLE `schedule` ADD COLUMN `detail` TEXT")
-            }
-        }
-
-        // Migration from 2 to 3 (for UserEntity)
-        val MIGRATION_2_3: Migration = object : Migration(2, 3) {
-            override fun migrate(db: SupportSQLiteDatabase) {
-                db.execSQL("CREATE TABLE IF NOT EXISTS `users` (`uid` TEXT NOT NULL, `email` TEXT, `displayName` TEXT, `photoUrl` TEXT, PRIMARY KEY(`uid`))")
-            }
-        }
-
-        // Migration from 3 to 4 (for VaultFileEntity)
-        val MIGRATION_3_4: Migration = object : Migration(3, 4) {
-            override fun migrate(db: SupportSQLiteDatabase) {
-                db.execSQL(
-                    "CREATE TABLE IF NOT EXISTS `vault_files` (" +
-                            "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
-                            "`fileName` TEXT NOT NULL, " +
-                            "`filePath` TEXT NOT NULL, " +
-                            "`originalSize` INTEGER NOT NULL, " +
-                            "`encryptedSize` INTEGER NOT NULL, " +
-                            "`uploadDate` INTEGER NOT NULL" +
-                            ")"
-                )
-            }
-        }
-
         @JvmStatic
         fun getInstance(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
-                // CẢNH BÁO BẢO MẬT: Passphrase này đang được hardcode.
-                // TRONG MÔI TRƯỜNG PRODUCTION, KHÔNG BAO GIỜ hardcode passphrase như thế này.
-                // Passphrase NÊN được tạo ngẫu nhiên cho mỗi người dùng, hoặc lấy từ AndroidKeyStore
-                // hoặc được người dùng nhập và lưu trữ/xử lý một cách cực kỳ an toàn.
                 val passphraseString = "12345"
                 val passphrase: ByteArray = passphraseString.toByteArray(StandardCharsets.UTF_8)
                 val factory = SupportFactory(passphrase)
@@ -87,8 +51,9 @@ abstract class AppDatabase : RoomDatabase() {
                     "workhubui_encrypted.db"
                 )
                     .openHelperFactory(factory)
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4) // Added new migration
-                    // .fallbackToDestructiveMigration() // Tránh sử dụng nếu có thể, dùng migrations
+                    // << SỬA LỖI: Cách đơn giản nhất để áp dụng thay đổi cấu trúc DB >>
+                    // Sẽ xóa và tạo lại CSDL nếu version thay đổi.
+                    .fallbackToDestructiveMigration()
                     .build()
                 INSTANCE = instance
                 instance
