@@ -1,8 +1,12 @@
+// app/src/main/java/com/workhubui/screens/auth/LoginScreen.kt
 package com.workhubui.screens.auth
 
 import android.app.Application
+import android.content.Intent
 import android.util.Log
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
@@ -29,9 +33,13 @@ import androidx.credentials.CredentialManager
 import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
 import androidx.credentials.exceptions.GetCredentialException
+import androidx.credentials.exceptions.NoCredentialException
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
+import com.google.android.gms.auth.api.signin.GoogleSignIn
+import com.google.android.gms.auth.api.signin.GoogleSignInOptions
+import com.google.android.gms.common.api.ApiException
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.workhubui.R
@@ -58,11 +66,35 @@ fun LoginScreen(navController: NavHostController) {
 
     val credentialManager = remember { CredentialManager.create(context) }
 
+    val serverClientId = context.getString(R.string.default_web_client_id)
+
+    // Launcher cho kết quả từ Intent đăng nhập Google truyền thống
+    val googleSignInLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
+        try {
+            val account = task.getResult(ApiException::class.java)!!
+            val idToken = account.idToken
+            if (idToken != null) {
+                Log.d("GoogleSignIn", "5. Đã lấy ID Token từ GoogleSignInLauncher thành công. Đang gửi đến ViewModel.")
+                authViewModel.signInWithGoogle(idToken)
+            } else {
+                Log.e("GoogleSignIn", "6. Google ID Token is null from GoogleSignInLauncher.")
+                Toast.makeText(context, "Lỗi: Không thể lấy Google ID Token.", Toast.LENGTH_SHORT).show()
+            }
+        } catch (e: ApiException) {
+            Log.e("GoogleSignIn", "7. Google Sign-In failed with code: ${e.statusCode}", e)
+            Toast.makeText(context, "Đăng nhập Google thất bại: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+        } catch (e: Exception) {
+            Log.e("GoogleSignIn", "8. Lỗi không mong muốn từ GoogleSignInLauncher:", e)
+            Toast.makeText(context, "Đã xảy ra lỗi không mong muốn khi đăng nhập Google.", Toast.LENGTH_LONG).show()
+        }
+    }
+
+
     fun launchGoogleSignIn() {
         coroutineScope.launch {
             try {
-                Log.d("GoogleSignIn", "1. Bắt đầu quá trình đăng nhập Google...")
-                val serverClientId = context.getString(R.string.default_web_client_id)
+                Log.d("GoogleSignIn", "1. Bắt đầu quá trình đăng nhập Google (Credential Manager)...")
                 val nonce = UUID.randomUUID().toString()
 
                 val googleIdOption = GetGoogleIdOption.Builder()
@@ -83,12 +115,23 @@ fun LoginScreen(navController: NavHostController) {
                 if (credential is CustomCredential && credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL) {
                     val googleIdTokenCredential = GoogleIdTokenCredential.createFrom(credential.data)
                     val googleIdToken = googleIdTokenCredential.idToken
-                    Log.d("GoogleSignIn", "4. Lấy ID Token thành công. Đang gửi đến ViewModel.")
+                    Log.d("GoogleSignIn", "4. Lấy ID Token thành công từ CredentialManager. Đang gửi đến ViewModel.")
                     authViewModel.signInWithGoogle(googleIdToken)
                 } else {
-                    Log.e("GoogleSignIn", "Loại thông tin đăng nhập không mong muốn: ${credential::class.java.name}")
+                    Log.e("GoogleSignIn", "Loại thông tin đăng nhập không mong muốn từ CredentialManager: ${credential::class.java.name}")
                     Toast.makeText(context, "Loại thông tin đăng nhập không được hỗ trợ.", Toast.LENGTH_SHORT).show()
                 }
+            } catch (e: NoCredentialException) {
+                // XỬ LÝ LỖI: KHÔNG CÓ TÀI KHOẢN HOẶC KHÔNG HIỂN THỊ ONE TAP
+                Log.w("GoogleSignIn", "Không tìm thấy thông tin đăng nhập hoặc One Tap không hiển thị. Chuyển sang đăng nhập Google truyền thống.", e)
+                // Khởi chạy Intent đăng nhập Google truyền thống
+                val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+                    .requestIdToken(serverClientId)
+                    .requestEmail()
+                    .build()
+                val googleSignInClient = GoogleSignIn.getClient(context, gso) // << LỖI NÀY SẼ BIẾN MẤT VỚI THAY ĐỔI TRÊN
+                googleSignInLauncher.launch(googleSignInClient.signInIntent)
+
             } catch (e: GetCredentialException) {
                 Log.e("GoogleSignIn", "GetCredentialException bị bắt:", e)
                 Toast.makeText(context, "Đăng nhập Google thất bại: ${e.message}", Toast.LENGTH_LONG).show()
