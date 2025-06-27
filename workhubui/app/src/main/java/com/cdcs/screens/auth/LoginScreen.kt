@@ -1,4 +1,3 @@
-// app/src/main/java/com/cdcs/screens/auth/LoginScreen.kt
 package com.cdcs.screens.auth
 
 import android.app.Application
@@ -54,6 +53,7 @@ import java.util.UUID
 fun LoginScreen(navController: NavHostController) {
     val context = LocalContext.current
     val application = context.applicationContext as Application
+    // Sửa lỗi: Phải khởi tạo ViewModel bằng Factory của nó
     val authViewModel: AuthViewModel = viewModel(factory = AuthViewModelFactory(application))
     val focusManager = LocalFocusManager.current
     val coroutineScope = rememberCoroutineScope()
@@ -62,17 +62,15 @@ fun LoginScreen(navController: NavHostController) {
     var password by remember { mutableStateOf("") }
 
     val authResult by authViewModel.authResult.collectAsState()
-    val isLoading by authViewModel.isLoading.collectAsState() // Sử dụng isLoading từ ViewModel
+    val isLoading by authViewModel.isLoading.collectAsState()
 
     val credentialManager = remember { CredentialManager.create(context) }
-
     val serverClientId = context.getString(R.string.default_web_client_id)
 
-    // --- Bổ sung cho Biometric ---
+    // --- Biometric ---
     val activity = context as? AppCompatActivity
     val shouldPromptBiometric by authViewModel.shouldPromptBiometric.collectAsState()
 
-    // Hiển thị biometric prompt khi cần
     LaunchedEffect(shouldPromptBiometric, activity) {
         if (shouldPromptBiometric && activity != null && BiometricHelper.isBiometricAvailable(context)) {
             BiometricHelper.showBiometricPrompt(
@@ -92,63 +90,45 @@ fun LoginScreen(navController: NavHostController) {
             )
         }
     }
-    // --- Kết thúc phần bổ sung cho Biometric ---
+    // --- Kết thúc Biometric ---
 
-    // Launcher cho kết quả từ Intent đăng nhập Google truyền thống
     val googleSignInLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
         try {
             val account = task.getResult(ApiException::class.java)!!
             val idToken = account.idToken
             if (idToken != null) {
-                Log.d("GoogleSignIn", "5. Đã lấy ID Token từ GoogleSignInLauncher thành công. Đang gửi đến ViewModel.")
                 authViewModel.signInWithGoogle(idToken)
             } else {
-                Log.e("GoogleSignIn", "6. Google ID Token is null from GoogleSignInLauncher.")
                 Toast.makeText(context, "Lỗi: Không thể lấy Google ID Token.", Toast.LENGTH_SHORT).show()
             }
-        } catch (e: ApiException) {
-            Log.e("GoogleSignIn", "7. Google Sign-In failed with code: ${e.statusCode}", e)
-            Toast.makeText(context, "Đăng nhập Google thất bại: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
         } catch (e: Exception) {
-            Log.e("GoogleSignIn", "8. Lỗi không mong muốn từ GoogleSignInLauncher:", e)
-            Toast.makeText(context, "Đã xảy ra lỗi không mong muốn khi đăng nhập Google.", Toast.LENGTH_LONG).show()
+            Toast.makeText(context, "Đăng nhập Google thất bại: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
         }
     }
-
 
     fun launchGoogleSignIn() {
         coroutineScope.launch {
             try {
-                Log.d("GoogleSignIn", "1. Bắt đầu quá trình đăng nhập Google (Credential Manager)...")
-                val nonce = UUID.randomUUID().toString()
-
                 val googleIdOption = GetGoogleIdOption.Builder()
                     .setFilterByAuthorizedAccounts(false)
                     .setServerClientId(serverClientId)
-                    .setNonce(nonce)
+                    .setNonce(UUID.randomUUID().toString())
                     .build()
 
                 val credentialRequest = GetCredentialRequest.Builder()
                     .addCredentialOption(googleIdOption)
                     .build()
 
-                Log.d("GoogleSignIn", "2. Đã tạo request. Đang gọi CredentialManager...")
                 val result = credentialManager.getCredential(request = credentialRequest, context = context)
-                Log.d("GoogleSignIn", "3. Đã nhận kết quả từ CredentialManager.")
-
                 val credential = result.credential
                 if (credential is CustomCredential && credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL) {
                     val googleIdTokenCredential = GoogleIdTokenCredential.createFrom(credential.data)
-                    val googleIdToken = googleIdTokenCredential.idToken
-                    Log.d("GoogleSignIn", "4. Lấy ID Token thành công từ CredentialManager. Đang gửi đến ViewModel.")
-                    authViewModel.signInWithGoogle(googleIdToken)
+                    authViewModel.signInWithGoogle(googleIdTokenCredential.idToken)
                 } else {
-                    Log.e("GoogleSignIn", "Loại thông tin đăng nhập không mong muốn từ CredentialManager: ${credential::class.java.name}")
                     Toast.makeText(context, "Loại thông tin đăng nhập không được hỗ trợ.", Toast.LENGTH_SHORT).show()
                 }
             } catch (e: NoCredentialException) {
-                Log.w("GoogleSignIn", "Không tìm thấy thông tin đăng nhập hoặc One Tap không hiển thị. Chuyển sang đăng nhập Google truyền thống.", e)
                 val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
                     .requestIdToken(serverClientId)
                     .requestEmail()
@@ -157,10 +137,8 @@ fun LoginScreen(navController: NavHostController) {
                 googleSignInLauncher.launch(googleSignInClient.signInIntent)
 
             } catch (e: GetCredentialException) {
-                Log.e("GoogleSignIn", "GetCredentialException bị bắt:", e)
                 Toast.makeText(context, "Đăng nhập Google thất bại: ${e.message}", Toast.LENGTH_LONG).show()
             } catch (e: Exception) {
-                Log.e("GoogleSignIn", "Một lỗi không mong muốn đã xảy ra:", e)
                 Toast.makeText(context, "Đã xảy ra lỗi không mong muốn.", Toast.LENGTH_LONG).show()
             }
         }
@@ -225,7 +203,6 @@ fun LoginScreen(navController: NavHostController) {
         )
         Spacer(modifier = Modifier.height(16.dp))
 
-        // --- Cập nhật Switch Biometric ---
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
@@ -242,8 +219,6 @@ fun LoginScreen(navController: NavHostController) {
                 enabled = !isLoading && BiometricHelper.isBiometricAvailable(context)
             )
         }
-        // --- Kết thúc cập nhật Switch ---
-
         Spacer(modifier = Modifier.height(24.dp))
 
         Button(
@@ -273,7 +248,6 @@ fun LoginScreen(navController: NavHostController) {
             onClick = { launchGoogleSignIn() }
         )
 
-        // --- Thêm nút đăng nhập bằng SĐT ---
         Spacer(modifier = Modifier.height(16.dp))
         OutlinedButton(
             onClick = { navController.navigate(Routes.PHONE_AUTH) },
@@ -284,7 +258,6 @@ fun LoginScreen(navController: NavHostController) {
         ) {
             Text("Đăng nhập bằng số điện thoại", color = MaterialTheme.colorScheme.onSurface)
         }
-        // --- Kết thúc thêm nút SĐT ---
 
         Spacer(modifier = Modifier.weight(1f))
         Row(
@@ -303,6 +276,7 @@ fun LoginScreen(navController: NavHostController) {
     }
 }
 
+// Các Composable phụ (GoogleSignInButton, OrDivider, Preview) giữ nguyên như cũ
 @Composable
 fun GoogleSignInButton(isLoading: Boolean, onClick: () -> Unit) {
     OutlinedButton(

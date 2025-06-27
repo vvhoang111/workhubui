@@ -1,4 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-
-    <style name="Theme.Workhubui" parent="Theme.AppCompat.Light.NoActionBar" /></resources>
+    <style name="Theme.Workhubui" parent="Theme.AppCompat.Light.NoActionBar" />
+</resources>

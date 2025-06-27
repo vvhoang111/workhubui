@@ -14,7 +14,7 @@ import androidx.navigation.compose.rememberNavController
 import com.cdcs.screens.MainScreen
 import com.cdcs.ui.theme.WorkhubuiTheme
 
-// Đổi ComponentActivity thành AppCompatActivity
+// Đảm bảo class kế thừa từ AppCompatActivity
 class MainActivity : AppCompatActivity() {
 
     private val requestPermissionLauncher = registerForActivityResult(

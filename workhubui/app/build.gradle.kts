@@ -1,15 +1,14 @@
-// app/build.gradle.kts
 plugins {
     id("com.android.application")
     kotlin("android")
     kotlin("plugin.compose")
-    id("kotlin-kapt") // Đảm bảo plugin này được áp dụng
+    id("kotlin-kapt")
     id("com.google.gms.google-services")
 }
 
 android {
     namespace = "com.cdcs"
-    compileSdk = 36
+    compileSdk = 34 // << SỬA LỖI: Đổi từ 36 về 34 (bản ổn định)
 
     defaultConfig {
         applicationId = "com.cdcs"
@@ -35,7 +34,7 @@ android {
     }
 
     composeOptions {
-        kotlinCompilerExtensionVersion = "1.5.11"
+        kotlinCompilerExtensionVersion = "1.5.11" // Đảm bảo phiên bản này khớp
     }
 
     compileOptions {
@@ -56,12 +55,9 @@ android {
     }
 }
 
-// << KHỐI KAPT ĐÃ ĐƯỢC SỬA LẠI CHÍNH XÁC >>
 kapt {
     correctErrorTypes = true
     arguments {
-        // Cú pháp đúng để chỉ định vị trí schema cho Room.
-        // Tùy chọn 'kapt.kotlin.generated' đã được xóa vì không cần thiết.
         arg("room.schemaLocation", "$projectDir/schemas")
     }
 }
@@ -71,7 +67,7 @@ dependencies {
     implementation("androidx.core:core-ktx:1.12.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
     implementation("androidx.activity:activity-compose:1.9.0")
-    implementation("androidx.appcompat:appcompat:1.6.1")
+    implementation("androidx.appcompat:appcompat:1.6.1") // << SỬA LỖI: Thêm thư viện này
 
     // Compose BOM
     implementation(platform("androidx.compose:compose-bom:2024.06.00"))
