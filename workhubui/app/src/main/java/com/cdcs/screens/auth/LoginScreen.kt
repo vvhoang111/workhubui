@@ -1,4 +1,4 @@
-// app/src/main/java/com/workhubui/screens/auth/LoginScreen.kt
+// app/src/main/java/com/cdcs/screens/auth/LoginScreen.kt
 package com.cdcs.screens.auth
 
 import android.app.Application
@@ -6,6 +6,7 @@ import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
@@ -36,14 +37,15 @@ import androidx.credentials.exceptions.NoCredentialException
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
+import com.cdcs.R
+import com.cdcs.navigation.Routes
+import com.cdcs.security.BiometricHelper
+import com.cdcs.ui.theme.WorkhubuiTheme
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions
 import com.google.android.gms.common.api.ApiException
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
-import com.cdcs.R
-import com.cdcs.navigation.Routes
-import com.cdcs.ui.theme.WorkhubuiTheme
 import kotlinx.coroutines.launch
 import java.util.UUID
 
@@ -58,14 +60,39 @@ fun LoginScreen(navController: NavHostController) {
 
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
-    var useBiometrics by remember { mutableStateOf(false) }
 
     val authResult by authViewModel.authResult.collectAsState()
-    val isLoading = authResult is AuthResult.Loading
+    val isLoading by authViewModel.isLoading.collectAsState() // Sử dụng isLoading từ ViewModel
 
     val credentialManager = remember { CredentialManager.create(context) }
 
     val serverClientId = context.getString(R.string.default_web_client_id)
+
+    // --- Bổ sung cho Biometric ---
+    val activity = context as? AppCompatActivity
+    val shouldPromptBiometric by authViewModel.shouldPromptBiometric.collectAsState()
+
+    // Hiển thị biometric prompt khi cần
+    LaunchedEffect(shouldPromptBiometric, activity) {
+        if (shouldPromptBiometric && activity != null && BiometricHelper.isBiometricAvailable(context)) {
+            BiometricHelper.showBiometricPrompt(
+                activity = activity,
+                onSuccess = {
+                    Toast.makeText(context, "Xác thực thành công!", Toast.LENGTH_SHORT).show()
+                    authViewModel.loginWithBiometrics()
+                },
+                onError = { _, errString ->
+                    Toast.makeText(context, errString, Toast.LENGTH_SHORT).show()
+                    authViewModel.biometricPromptFinished()
+                },
+                onFailure = {
+                    Toast.makeText(context, "Xác thực thất bại.", Toast.LENGTH_SHORT).show()
+                    authViewModel.biometricPromptFinished()
+                }
+            )
+        }
+    }
+    // --- Kết thúc phần bổ sung cho Biometric ---
 
     // Launcher cho kết quả từ Intent đăng nhập Google truyền thống
     val googleSignInLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -121,14 +148,12 @@ fun LoginScreen(navController: NavHostController) {
                     Toast.makeText(context, "Loại thông tin đăng nhập không được hỗ trợ.", Toast.LENGTH_SHORT).show()
                 }
             } catch (e: NoCredentialException) {
-                // XỬ LÝ LỖI: KHÔNG CÓ TÀI KHOẢN HOẶC KHÔNG HIỂN THỊ ONE TAP
                 Log.w("GoogleSignIn", "Không tìm thấy thông tin đăng nhập hoặc One Tap không hiển thị. Chuyển sang đăng nhập Google truyền thống.", e)
-                // Khởi chạy Intent đăng nhập Google truyền thống
                 val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
                     .requestIdToken(serverClientId)
                     .requestEmail()
                     .build()
-                val googleSignInClient = GoogleSignIn.getClient(context, gso) // << LỖI NÀY SẼ BIẾN MẤT VỚI THAY ĐỔI TRÊN
+                val googleSignInClient = GoogleSignIn.getClient(context, gso)
                 googleSignInLauncher.launch(googleSignInClient.signInIntent)
 
             } catch (e: GetCredentialException) {
@@ -200,14 +225,25 @@ fun LoginScreen(navController: NavHostController) {
         )
         Spacer(modifier = Modifier.height(16.dp))
 
+        // --- Cập nhật Switch Biometric ---
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Text("Sử dụng sinh trắc học", style = MaterialTheme.typography.bodyLarge)
-            Switch(checked = useBiometrics, onCheckedChange = { useBiometrics = it }, modifier = Modifier.scale(1.1f), enabled = !isLoading)
+            val isBiometricEnabled by authViewModel.isBiometricLoginEnabled.collectAsState()
+            Text("Đăng nhập bằng sinh trắc học", style = MaterialTheme.typography.bodyLarge)
+            Switch(
+                checked = isBiometricEnabled,
+                onCheckedChange = { isEnabled ->
+                    authViewModel.setBiometricLoginEnabled(isEnabled)
+                },
+                modifier = Modifier.scale(1.1f),
+                enabled = !isLoading && BiometricHelper.isBiometricAvailable(context)
+            )
         }
+        // --- Kết thúc cập nhật Switch ---
+
         Spacer(modifier = Modifier.height(24.dp))
 
         Button(
@@ -236,6 +272,19 @@ fun LoginScreen(navController: NavHostController) {
             isLoading = isLoading,
             onClick = { launchGoogleSignIn() }
         )
+
+        // --- Thêm nút đăng nhập bằng SĐT ---
+        Spacer(modifier = Modifier.height(16.dp))
+        OutlinedButton(
+            onClick = { navController.navigate(Routes.PHONE_AUTH) },
+            modifier = Modifier.fillMaxWidth().height(50.dp),
+            shape = MaterialTheme.shapes.medium,
+            border = BorderStroke(1.dp, Color.LightGray),
+            enabled = !isLoading
+        ) {
+            Text("Đăng nhập bằng số điện thoại", color = MaterialTheme.colorScheme.onSurface)
+        }
+        // --- Kết thúc thêm nút SĐT ---
 
         Spacer(modifier = Modifier.weight(1f))
         Row(
