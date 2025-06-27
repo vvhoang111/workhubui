@@ -86,7 +86,7 @@ dependencies {
     implementation("com.google.firebase:firebase-firestore-ktx")
     implementation("com.google.firebase:firebase-storage-ktx")
     implementation("com.google.firebase:firebase-messaging-ktx")
-
+    implementation("com.google.firebase:firebase-appcheck-playintegrity")
     // OkHttp
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
@@ -119,4 +119,5 @@ dependencies {
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
+
 }

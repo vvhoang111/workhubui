@@ -1,21 +1,46 @@
 package com.cdcs.screens.auth
 
-import android.app.Application
-import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Fingerprint
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -25,7 +50,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.credentials.CredentialManager
@@ -35,11 +59,9 @@ import androidx.credentials.exceptions.GetCredentialException
 import androidx.credentials.exceptions.NoCredentialException
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
-import androidx.navigation.compose.rememberNavController
 import com.cdcs.R
 import com.cdcs.navigation.Routes
 import com.cdcs.security.BiometricHelper
-import com.cdcs.ui.theme.WorkhubuiTheme
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions
 import com.google.android.gms.common.api.ApiException
@@ -52,9 +74,7 @@ import java.util.UUID
 @Composable
 fun LoginScreen(navController: NavHostController) {
     val context = LocalContext.current
-    val application = context.applicationContext as Application
-    // Sửa lỗi: Phải khởi tạo ViewModel bằng Factory của nó
-    val authViewModel: AuthViewModel = viewModel(factory = AuthViewModelFactory(application))
+    val authViewModel: AuthViewModel = viewModel(factory = AuthViewModelFactory(context.applicationContext as android.app.Application))
     val focusManager = LocalFocusManager.current
     val coroutineScope = rememberCoroutineScope()
 
@@ -63,16 +83,16 @@ fun LoginScreen(navController: NavHostController) {
 
     val authResult by authViewModel.authResult.collectAsState()
     val isLoading by authViewModel.isLoading.collectAsState()
+    val isBiometricEnabled by authViewModel.isBiometricLoginEnabled.collectAsState()
 
     val credentialManager = remember { CredentialManager.create(context) }
     val serverClientId = context.getString(R.string.default_web_client_id)
 
-    // --- Biometric ---
     val activity = context as? AppCompatActivity
-    val shouldPromptBiometric by authViewModel.shouldPromptBiometric.collectAsState()
 
-    LaunchedEffect(shouldPromptBiometric, activity) {
-        if (shouldPromptBiometric && activity != null && BiometricHelper.isBiometricAvailable(context)) {
+    // Hàm gọi prompt sinh trắc học
+    fun showBiometricPrompt() {
+        if (activity != null && BiometricHelper.isBiometricAvailable(context)) {
             BiometricHelper.showBiometricPrompt(
                 activity = activity,
                 onSuccess = {
@@ -81,27 +101,28 @@ fun LoginScreen(navController: NavHostController) {
                 },
                 onError = { _, errString ->
                     Toast.makeText(context, errString, Toast.LENGTH_SHORT).show()
-                    authViewModel.biometricPromptFinished()
                 },
                 onFailure = {
                     Toast.makeText(context, "Xác thực thất bại.", Toast.LENGTH_SHORT).show()
-                    authViewModel.biometricPromptFinished()
                 }
             )
         }
     }
-    // --- Kết thúc Biometric ---
+
+    // Tự động hiển thị prompt nếu người dùng đã bật sẵn và vừa mở app
+    val shouldPromptBiometric by authViewModel.shouldPromptBiometric.collectAsState()
+    LaunchedEffect(shouldPromptBiometric, activity) {
+        if (shouldPromptBiometric) {
+            showBiometricPrompt()
+            authViewModel.biometricPromptFinished() // Đặt lại cờ để không hiện lại
+        }
+    }
 
     val googleSignInLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
         try {
             val account = task.getResult(ApiException::class.java)!!
-            val idToken = account.idToken
-            if (idToken != null) {
-                authViewModel.signInWithGoogle(idToken)
-            } else {
-                Toast.makeText(context, "Lỗi: Không thể lấy Google ID Token.", Toast.LENGTH_SHORT).show()
-            }
+            authViewModel.signInWithGoogle(account.idToken!!)
         } catch (e: Exception) {
             Toast.makeText(context, "Đăng nhập Google thất bại: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
         }
@@ -115,31 +136,18 @@ fun LoginScreen(navController: NavHostController) {
                     .setServerClientId(serverClientId)
                     .setNonce(UUID.randomUUID().toString())
                     .build()
-
-                val credentialRequest = GetCredentialRequest.Builder()
-                    .addCredentialOption(googleIdOption)
-                    .build()
-
+                val credentialRequest = GetCredentialRequest.Builder().addCredentialOption(googleIdOption).build()
                 val result = credentialManager.getCredential(request = credentialRequest, context = context)
                 val credential = result.credential
                 if (credential is CustomCredential && credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL) {
                     val googleIdTokenCredential = GoogleIdTokenCredential.createFrom(credential.data)
                     authViewModel.signInWithGoogle(googleIdTokenCredential.idToken)
-                } else {
-                    Toast.makeText(context, "Loại thông tin đăng nhập không được hỗ trợ.", Toast.LENGTH_SHORT).show()
                 }
             } catch (e: NoCredentialException) {
-                val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
-                    .requestIdToken(serverClientId)
-                    .requestEmail()
-                    .build()
-                val googleSignInClient = GoogleSignIn.getClient(context, gso)
-                googleSignInLauncher.launch(googleSignInClient.signInIntent)
-
+                val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN).requestIdToken(serverClientId).requestEmail().build()
+                googleSignInLauncher.launch(GoogleSignIn.getClient(context, gso).signInIntent)
             } catch (e: GetCredentialException) {
                 Toast.makeText(context, "Đăng nhập Google thất bại: ${e.message}", Toast.LENGTH_LONG).show()
-            } catch (e: Exception) {
-                Toast.makeText(context, "Đã xảy ra lỗi không mong muốn.", Toast.LENGTH_LONG).show()
             }
         }
     }
@@ -164,10 +172,7 @@ fun LoginScreen(navController: NavHostController) {
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text(
-            "WorkHub",
-            style = MaterialTheme.typography.headlineLarge.copy(color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-        )
+        Text("WorkHub", style = MaterialTheme.typography.headlineLarge.copy(color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold))
         Spacer(modifier = Modifier.height(24.dp))
         Text("Đăng nhập", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.SemiBold)
         Spacer(modifier = Modifier.height(24.dp))
@@ -190,65 +195,47 @@ fun LoginScreen(navController: NavHostController) {
             singleLine = true,
             visualTransformation = PasswordVisualTransformation(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
-            keyboardActions = KeyboardActions(onDone = {
-                focusManager.clearFocus()
-                if (email.isNotBlank() && password.isNotBlank()) {
-                    authViewModel.loginUser(email, password)
-                } else {
-                    Toast.makeText(context, "Email và mật khẩu không được để trống.", Toast.LENGTH_SHORT).show()
-                }
-            }),
+            keyboardActions = KeyboardActions(onDone = { authViewModel.loginUser(email, password) }),
             modifier = Modifier.fillMaxWidth(),
             enabled = !isLoading
         )
-        Spacer(modifier = Modifier.height(16.dp))
+
+        Spacer(modifier = Modifier.height(24.dp))
 
         Row(
             modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            val isBiometricEnabled by authViewModel.isBiometricLoginEnabled.collectAsState()
-            Text("Đăng nhập bằng sinh trắc học", style = MaterialTheme.typography.bodyLarge)
-            Switch(
-                checked = isBiometricEnabled,
-                onCheckedChange = { isEnabled ->
-                    authViewModel.setBiometricLoginEnabled(isEnabled)
-                },
-                modifier = Modifier.scale(1.1f),
-                enabled = !isLoading && BiometricHelper.isBiometricAvailable(context)
-            )
-        }
-        Spacer(modifier = Modifier.height(24.dp))
-
-        Button(
-            onClick = {
-                focusManager.clearFocus()
-                if (email.isNotBlank() && password.isNotBlank()) {
-                    authViewModel.loginUser(email, password)
+            Button(
+                onClick = { authViewModel.loginUser(email, password) },
+                modifier = Modifier.weight(1f).height(50.dp),
+                enabled = !isLoading,
+                shape = MaterialTheme.shapes.medium
+            ) {
+                if (isLoading) {
+                    CircularProgressIndicator(modifier = Modifier.size(24.dp), color = MaterialTheme.colorScheme.onPrimary)
                 } else {
-                    Toast.makeText(context, "Email và mật khẩu không được để trống.", Toast.LENGTH_SHORT).show()
+                    Text("Đăng nhập", fontSize = 18.sp)
                 }
-            },
-            modifier = Modifier.fillMaxWidth().height(50.dp),
-            enabled = !isLoading,
-            shape = MaterialTheme.shapes.medium
-        ) {
-            if (isLoading) {
-                CircularProgressIndicator(modifier = Modifier.size(24.dp), color = MaterialTheme.colorScheme.onPrimary)
-            } else {
-                Text("Đăng nhập", fontSize = 18.sp)
+            }
+            // **THAY ĐỔI: Nút bấm sinh trắc học thay cho Switch**
+            if (isBiometricEnabled && BiometricHelper.isBiometricAvailable(context)) {
+                IconButton(
+                    onClick = { showBiometricPrompt() },
+                    modifier = Modifier.size(50.dp)
+                ) {
+                    Icon(Icons.Default.Fingerprint, contentDescription = "Đăng nhập bằng sinh trắc học", modifier = Modifier.size(32.dp))
+                }
             }
         }
 
         OrDivider()
 
-        GoogleSignInButton(
-            isLoading = isLoading,
-            onClick = { launchGoogleSignIn() }
-        )
+        GoogleSignInButton(isLoading = isLoading, onClick = { launchGoogleSignIn() })
 
         Spacer(modifier = Modifier.height(16.dp))
+
         OutlinedButton(
             onClick = { navController.navigate(Routes.PHONE_AUTH) },
             modifier = Modifier.fillMaxWidth().height(50.dp),
@@ -270,13 +257,11 @@ fun LoginScreen(navController: NavHostController) {
                 Text("Đăng ký ngay", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
             }
         }
-        TextButton(onClick = { /* TODO: Quên mật khẩu */ }) {
-            Text("Quên mật khẩu?")
-        }
+        TextButton(onClick = { /* TODO */ }) { Text("Quên mật khẩu?") }
     }
 }
 
-// Các Composable phụ (GoogleSignInButton, OrDivider, Preview) giữ nguyên như cũ
+// Các Composable phụ (GoogleSignInButton, OrDivider) giữ nguyên như cũ
 @Composable
 fun GoogleSignInButton(isLoading: Boolean, onClick: () -> Unit) {
     OutlinedButton(
@@ -308,13 +293,5 @@ fun OrDivider() {
         HorizontalDivider(modifier = Modifier.weight(1f))
         Text(text = "HOẶC", modifier = Modifier.padding(horizontal = 8.dp), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.outline)
         HorizontalDivider(modifier = Modifier.weight(1f))
-    }
-}
-
-@Preview(showBackground = true)
-@Composable
-fun LoginScreenPreview(){
-    WorkhubuiTheme {
-        LoginScreen(navController = rememberNavController())
     }
 }

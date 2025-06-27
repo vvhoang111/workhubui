@@ -4,7 +4,6 @@ import android.app.Activity
 import android.app.Application
 import android.content.Context
 import android.util.Base64
-import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.cdcs.data.local.AppDatabase
@@ -31,13 +30,14 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 import java.util.concurrent.TimeUnit
+import android.util.Log // **GIẢI PHÁP: Thêm dòng import này**
+import androidx.core.content.edit //
 
 class AuthViewModel(application: Application) : AndroidViewModel(application) {
 
     private val firebaseAuthInstance: FirebaseAuth = FirebaseAuth.getInstance()
     private val tokenManager: TokenManager = TokenManager(application.applicationContext)
     private val sharedPrefs = application.getSharedPreferences("biometric_prefs", Context.MODE_PRIVATE)
-
 
     private val userDao = AppDatabase.getInstance(application).userDao()
     private val chatMessageDao = AppDatabase.getInstance(application).chatMessageDao()
@@ -55,50 +55,51 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
-    // --- Biometric States ---
     private val _isBiometricLoginEnabled = MutableStateFlow(sharedPrefs.getBoolean("biometric_enabled", false))
     val isBiometricLoginEnabled: StateFlow<Boolean> = _isBiometricLoginEnabled.asStateFlow()
 
     private val _shouldPromptBiometric = MutableStateFlow(false)
     val shouldPromptBiometric: StateFlow<Boolean> = _shouldPromptBiometric.asStateFlow()
 
-    // --- Phone Auth States ---
     private val _navigateToOtpVerify = MutableSharedFlow<String>()
     val navigateToOtpVerify = _navigateToOtpVerify.asSharedFlow()
 
     init {
         _currentUser.value = firebaseAuthInstance.currentUser
-        if (isBiometricLoginEnabled.value && isLoggedIn()) {
+        // Nếu người dùng đã đăng nhập và đã bật sinh trắc học, gợi ý họ đăng nhập bằng sinh trắc học
+        if (!isLoggedIn() && isBiometricLoginEnabled.value) {
             _shouldPromptBiometric.value = true
         }
     }
 
-    fun isLoggedIn(): Boolean {
-        return _currentUser.value != null && tokenManager.getAccessToken() != null
-    }
+    fun isLoggedIn(): Boolean = firebaseAuthInstance.currentUser != null
 
     private suspend fun handleSuccessfulLogin(firebaseUser: FirebaseUser) {
         _currentUser.value = firebaseUser
         tokenManager.saveAccessToken(firebaseUser.getIdToken(true).await().token!!)
-        updateFcmToken(firebaseUser.uid)
+
+        // Bước 1: Luôn tạo hoặc đồng bộ thông tin người dùng trước.
         syncUserKeysAndData(firebaseUser)
+
+        // Bước 2: Sau khi đảm bảo người dùng đã tồn tại, tiến hành cập nhật FCM token.
+        updateFcmToken(firebaseUser.uid)
+
         _authResult.value = AuthResult.Success("Đăng nhập thành công!")
     }
 
     fun loginUser(email: String, password: String) {
+        if (email.isBlank() || password.isBlank()) {
+            _authResult.value = AuthResult.Error("Email và mật khẩu không được để trống.")
+            return
+        }
         viewModelScope.launch {
             _isLoading.value = true
-            if (email.isBlank() || password.isBlank()) {
-                _authResult.value = AuthResult.Error("Email và mật khẩu không được để trống."); _isLoading.value = false; return@launch
-            }
             try {
                 val authResultFirebase = firebaseAuthInstance.signInWithEmailAndPassword(email, password).await()
                 handleSuccessfulLogin(authResultFirebase.user!!)
             } catch (e: Exception) {
                 _authResult.value = AuthResult.Error("Lỗi đăng nhập: ${e.localizedMessage}")
-            } finally {
-                _isLoading.value = false
-            }
+            } finally { _isLoading.value = false }
         }
     }
 
@@ -110,23 +111,8 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
             }
             try {
                 val authResultFirebase = firebaseAuthInstance.createUserWithEmailAndPassword(email, password).await()
-                val firebaseUser = authResultFirebase.user!!
-                _currentUser.value = firebaseUser
-
-                tokenManager.saveAccessToken(firebaseUser.getIdToken(true).await().token!!)
-
-                val keyPair = cryptoManager.getOrCreateUserKeyPair(firebaseUser.uid)
-                val publicKeyString = Base64.encodeToString(keyPair.public.encoded, Base64.DEFAULT)
-
-                val newUserEntity = UserEntity(
-                    uid = firebaseUser.uid, email = firebaseUser.email,
-                    displayName = firebaseUser.email?.substringBefore('@'), photoUrl = null,
-                    publicKey = publicKeyString, friends = emptyList()
-                )
-                userRepository.insertUser(newUserEntity)
-                firebaseRepository.saveUserToFirestore(newUserEntity)
-                updateFcmToken(firebaseUser.uid)
-                _authResult.value = AuthResult.Success("Đăng ký thành công!")
+                // Sau khi tạo user trên Auth, gọi luồng xử lý chung như khi đăng nhập
+                handleSuccessfulLogin(authResultFirebase.user!!)
             } catch (e: Exception) {
                 _authResult.value = AuthResult.Error("Lỗi đăng ký: ${e.localizedMessage}")
             } finally {
@@ -138,28 +124,27 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
     fun signInWithGoogle(idToken: String) {
         viewModelScope.launch {
             _isLoading.value = true
-            val credential = GoogleAuthProvider.getCredential(idToken, null)
             try {
+                val credential = GoogleAuthProvider.getCredential(idToken, null)
                 val authResultFirebase = firebaseAuthInstance.signInWithCredential(credential).await()
                 handleSuccessfulLogin(authResultFirebase.user!!)
             } catch (e: Exception) {
                 _authResult.value = AuthResult.Error("Lỗi đăng nhập Google: ${e.localizedMessage}")
-            } finally {
-                _isLoading.value = false
-            }
+            } finally { _isLoading.value = false }
         }
     }
 
     fun logoutUser() {
         viewModelScope.launch {
+            firebaseAuthInstance.signOut()
+            tokenManager.clearTokens()
+            // Không tắt sinh trắc học của người dùng khi họ chỉ đăng xuất
+            // setBiometricLoginEnabled(false)
+            _currentUser.value = null
             withContext(Dispatchers.IO) {
                 userRepository.clearUsers()
                 chatRepository.clearChatMessages()
             }
-            firebaseAuthInstance.signOut()
-            tokenManager.clearTokens()
-            setBiometricLoginEnabled(false) // Tắt sinh trắc học khi đăng xuất
-            _currentUser.value = null
             _authResult.value = AuthResult.Idle
         }
     }
@@ -169,40 +154,53 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
             if (!task.isSuccessful) {
                 Log.w("AuthViewModel", "Fetching FCM token failed", task.exception); return@addOnCompleteListener
             }
-            viewModelScope.launch { firebaseRepository.updateUserFcmToken(uid, task.result) }
+            val token = task.result
+            viewModelScope.launch {
+                try {
+                    val userProfile = firebaseRepository.getUserProfile(uid)
+                    if (userProfile != null && !userProfile.fcmTokens.contains(token)) {
+                        val updatedTokens = userProfile.fcmTokens + token
+                        val updatedUser = userProfile.copy(fcmTokens = updatedTokens)
+                        firebaseRepository.saveUserToFirestore(updatedUser)
+                        Log.d("AuthViewModel", "FCM token updated for user $uid")
+                    }
+                } catch (e: Exception) {
+                    Log.e("AuthViewModel", "Failed to update FCM token in Firestore", e)
+                }
+            }
         }
-    }
-
-    fun resetAuthResult() {
-        _authResult.value = AuthResult.Idle
     }
 
     private suspend fun syncUserKeysAndData(firebaseUser: FirebaseUser) {
         val uid = firebaseUser.uid
         withContext(Dispatchers.IO) {
-            val localKeyPair = cryptoManager.getOrCreateUserKeyPair(uid)
-            val localPublicKeyString = Base64.encodeToString(localKeyPair.public.encoded, Base64.DEFAULT)
-
+            // Lấy thông tin người dùng từ Firestore để kiểm tra
             var userProfile = firebaseRepository.getUserProfile(uid)
 
-            if (userProfile == null || userProfile.publicKey != localPublicKeyString) {
-                Log.d("AuthViewModel", "Creating/updating user profile in Firestore.")
-                val newUserEntity = UserEntity(
+            if (userProfile == null) {
+                // Nếu người dùng chưa tồn tại trên Firestore -> đây là lần đăng nhập đầu tiên
+                Log.d("AuthViewModel", "User not found in Firestore. Creating new document for $uid.")
+                val localKeyPair = cryptoManager.getOrCreateUserKeyPair(uid)
+                val localPublicKeyString = Base64.encodeToString(localKeyPair.public.encoded, Base64.DEFAULT)
+
+                userProfile = UserEntity(
                     uid = uid,
                     email = firebaseUser.email,
-                    displayName = firebaseUser.displayName ?: firebaseUser.email?.substringBefore('@'),
+                    displayName = firebaseUser.displayName ?: firebaseUser.email?.substringBefore('@') ?: firebaseUser.phoneNumber,
                     photoUrl = firebaseUser.photoUrl?.toString(),
                     publicKey = localPublicKeyString,
-                    friends = userProfile?.friends ?: emptyList()
+                    friends = emptyList(),
+                    fcmTokens = emptyList() // Khởi tạo rỗng
                 )
-                firebaseRepository.saveUserToFirestore(newUserEntity)
-                userProfile = newUserEntity
             }
-
+            // Dù là người dùng mới hay cũ, cũng lưu lại thông tin (để cập nhật displayName, photoUrl, etc.)
+            firebaseRepository.saveUserToFirestore(userProfile)
             userRepository.insertUser(userProfile)
-            Log.d("AuthViewModel", "User data sync complete.")
+            Log.d("AuthViewModel", "User data sync complete for $uid.")
         }
     }
+
+    fun resetAuthResult() { _authResult.value = AuthResult.Idle }
 
     // --- Biometric Functions ---
     fun setBiometricLoginEnabled(enabled: Boolean) {
@@ -215,25 +213,25 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun loginWithBiometrics() {
+        // Hàm này sẽ được gọi sau khi xác thực sinh trắc học thành công
         viewModelScope.launch {
             _isLoading.value = true
-            val token = tokenManager.getAccessToken()
+            // Giả định token đã lưu từ lần đăng nhập trước là hợp lệ
+            // Trong thực tế có thể cần kiểm tra và làm mới token
             val user = firebaseAuthInstance.currentUser
-            if (token != null && user != null) {
+            if (user != null && tokenManager.getAccessToken() != null) {
                 handleSuccessfulLogin(user)
             } else {
-                _authResult.value = AuthResult.Error("Không tìm thấy thông tin đăng nhập. Vui lòng đăng nhập lại.")
+                _authResult.value = AuthResult.Error("Không tìm thấy thông tin đăng nhập. Vui lòng đăng nhập lại bằng mật khẩu.")
+                setBiometricLoginEnabled(false) // Tắt đi nếu thông tin không hợp lệ
             }
             _isLoading.value = false
-            biometricPromptFinished()
         }
     }
 
     fun biometricPromptFinished() {
         _shouldPromptBiometric.value = false
     }
-
-
     // --- Phone Auth Functions ---
     private val phoneAuthCallbacks = object : PhoneAuthProvider.OnVerificationStateChangedCallbacks() {
         override fun onVerificationCompleted(credential: PhoneAuthCredential) {

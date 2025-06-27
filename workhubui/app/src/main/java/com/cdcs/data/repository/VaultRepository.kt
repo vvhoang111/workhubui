@@ -2,10 +2,10 @@ package com.cdcs.data.repository
 
 import com.cdcs.data.local.dao.VaultFileDao
 import com.cdcs.data.local.entity.VaultFileEntity
+import com.cdcs.model.VaultFile
+import com.cdcs.utils.toModel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
-import com.cdcs.model.VaultFile // Corrected: Import VaultFile from model package
-import com.cdcs.utils.toModel // Corrected: Import toModel extension from utils package
 
 /**
  * Repository for managing VaultFile data.

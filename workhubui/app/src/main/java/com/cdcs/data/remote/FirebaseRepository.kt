@@ -1,14 +1,15 @@
 package com.cdcs.data.remote
 
 import android.util.Log
+import com.cdcs.data.local.entity.UserEntity
+import com.cdcs.model.ChatMessage
+import com.cdcs.model.ChatRoomMetadata
+import com.cdcs.model.FirestoreChatMessage
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.SetOptions
-import com.cdcs.data.local.entity.UserEntity
-import com.cdcs.model.ChatRoomMetadata
-import com.cdcs.model.FirestoreChatMessage
 import kotlinx.coroutines.tasks.await
 
 class FirebaseRepository {
@@ -22,11 +23,41 @@ class FirebaseRepository {
     suspend fun saveUserToFirestore(user: UserEntity) {
         try {
             usersCollection.document(user.uid).set(user, SetOptions.merge()).await()
-            Log.d(TAG, "User ${user.email} saved/updated in Firestore.")
+            Log.d(TAG, "User ${user.email ?: user.uid} saved/updated in Firestore.")
         } catch (e: Exception) {
             Log.e(TAG, "Error saving user to Firestore", e)
             throw e
         }
+    }
+
+    // **ĐỊNH NGHĨA HÀM BỊ THIẾU NẰM Ở ĐÂY**
+    fun getChatRoomsListener(userUid: String, onUpdate: (List<ChatRoomMetadata>) -> Unit): ListenerRegistration {
+        return chatRoomsCollection.whereArrayContains("participants", userUid)
+            .orderBy("lastMessageTimestamp", Query.Direction.DESCENDING)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    Log.e(TAG, "ChatRooms listen failed.", error)
+                    return@addSnapshotListener
+                }
+                if (snapshot != null) {
+                    onUpdate(snapshot.toObjects(ChatRoomMetadata::class.java))
+                }
+            }
+    }
+
+    // **VÀ ĐÂY**
+    fun getChatMessagesListener(chatRoomId: String, onNewMessages: (List<FirestoreChatMessage>) -> Unit): ListenerRegistration {
+        return chatsCollection.document(chatRoomId).collection("messages")
+            .orderBy("timestamp", Query.Direction.ASCENDING)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    Log.e(TAG, "Listen failed.", error)
+                    return@addSnapshotListener
+                }
+                if (snapshot != null) {
+                    onNewMessages(snapshot.toObjects(FirestoreChatMessage::class.java))
+                }
+            }
     }
 
     suspend fun establishFriendshipAndCreateChatRoom(currentUserUid: String, friendUid: String) {
@@ -40,13 +71,11 @@ class FirebaseRepository {
                 batch.update(userDocRef, "friends", FieldValue.arrayUnion(friendUid))
                 batch.update(friendDocRef, "friends", FieldValue.arrayUnion(currentUserUid))
 
-                // << THAY ĐỔI CỐT LÕI: Truyền `null` thay vì `FieldValue.serverTimestamp()` >>
-                // Chú thích @ServerTimestamp trong model ChatRoomMetadata sẽ tự động xử lý việc này.
                 val metadata = ChatRoomMetadata(
                     participants = listOf(currentUserUid, friendUid),
                     lastMessage = "Cuộc trò chuyện đã bắt đầu!",
                     lastMessageSenderId = "",
-                    lastMessageTimestamp = null // Truyền null để @ServerTimestamp hoạt động
+                    lastMessageTimestamp = null
                 )
                 batch.set(chatRoomRef, metadata, SetOptions.merge())
             }.await()
@@ -67,7 +96,7 @@ class FirebaseRepository {
                 val metadataUpdate = mapOf(
                     "lastMessage" to lastMessageContent,
                     "lastMessageSenderId" to message.senderId,
-                    "lastMessageTimestamp" to FieldValue.serverTimestamp() // Cách này đúng vì đây là Map, không phải data class
+                    "lastMessageTimestamp" to FieldValue.serverTimestamp()
                 )
                 batch.set(chatRoomRef, metadataUpdate, SetOptions.merge())
             }.await()
@@ -80,7 +109,10 @@ class FirebaseRepository {
     suspend fun getUserProfile(uid: String): UserEntity? {
         return try {
             usersCollection.document(uid).get().await().toObject(UserEntity::class.java)
-        } catch (e: Exception) { Log.e(TAG, "Error getting user profile for $uid", e); null }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting user profile for $uid", e)
+            null
+        }
     }
 
     suspend fun getUserByEmailFromFirestore(email: String): UserEntity? {
@@ -88,52 +120,18 @@ class FirebaseRepository {
             val querySnapshot = usersCollection.whereEqualTo("email", email).get().await()
             if (querySnapshot.isEmpty) { return null }
             querySnapshot.documents.firstOrNull()?.toObject(UserEntity::class.java)
-        } catch (e: Exception) { Log.e(TAG, "Error getting user by email", e); null }
-    }
-
-    suspend fun getUserProfiles(uids: List<String>): List<UserEntity> {
-        if (uids.isEmpty()) return emptyList()
-        return try {
-            usersCollection.whereIn("uid", uids).get().await().toObjects(UserEntity::class.java)
-        } catch (e: Exception) { Log.e(TAG, "Error getting user profiles", e); emptyList() }
-    }
-
-    suspend fun updateUserFcmToken(uid: String, token: String) {
-        try {
-            usersCollection.document(uid).update("fcmTokens", FieldValue.arrayUnion(token)).await()
         } catch (e: Exception) {
-            try {
-                usersCollection.document(uid).set(mapOf("fcmTokens" to listOf(token)), SetOptions.merge()).await()
-            } catch (createError: Exception) { Log.e(TAG, "Error updating/creating FCM token", createError) }
+            Log.e(TAG, "Error getting user by email", e)
+            null
         }
     }
 
     suspend fun getFriendPublicKey(friendUid: String): String? {
         return try {
             usersCollection.document(friendUid).get().await().getString("publicKey")
-        } catch (e: Exception) { Log.e(TAG, "Error getting public key for $friendUid", e); null }
-    }
-
-    suspend fun getFriendListUids(userUid: String): List<String> {
-        return try {
-            @Suppress("UNCHECKED_CAST")
-            usersCollection.document(userUid).get().await()["friends"] as? List<String> ?: emptyList()
-        } catch (e: Exception) { Log.e(TAG, "Error getting friend list for $userUid", e); emptyList() }
-    }
-
-    fun getChatRoomsListener(userUid: String, onUpdate: (List<ChatRoomMetadata>) -> Unit): ListenerRegistration {
-        return chatRoomsCollection.whereArrayContains("participants", userUid).orderBy("lastMessageTimestamp", Query.Direction.DESCENDING)
-            .addSnapshotListener { snapshot, error ->
-                if (error != null) { Log.e(TAG, "ChatRooms listen failed.", error); return@addSnapshotListener }
-                if (snapshot != null) { onUpdate(snapshot.toObjects(ChatRoomMetadata::class.java)) }
-            }
-    }
-
-    fun getChatMessagesListener(chatRoomId: String, onNewMessages: (List<FirestoreChatMessage>) -> Unit): ListenerRegistration {
-        return chatsCollection.document(chatRoomId).collection("messages").orderBy("timestamp", Query.Direction.ASCENDING)
-            .addSnapshotListener { snapshot, error ->
-                if (error != null) { Log.e(TAG, "Listen failed.", error); return@addSnapshotListener }
-                if (snapshot != null) { onNewMessages(snapshot.toObjects(FirestoreChatMessage::class.java)) }
-            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting public key for $friendUid", e)
+            null
+        }
     }
 }
