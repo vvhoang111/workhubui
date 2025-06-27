@@ -64,6 +64,16 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
     private val _navigateToOtpVerify = MutableSharedFlow<String>()
     val navigateToOtpVerify = _navigateToOtpVerify.asSharedFlow()
 
+    //**GIẢI PHÁP: Khai báo `authStateListener` ở đây, bên ngoài hàm init()**
+    private val authStateListener = FirebaseAuth.AuthStateListener { auth ->
+        _currentUser.value = auth.currentUser
+        if (auth.currentUser == null) {
+            tokenManager.clearTokens()
+            // Không tự động tắt, để người dùng tự quyết định trong lần đăng nhập sau
+            // setBiometricLoginEnabled(false)
+        }
+    }
+
     init {
         _currentUser.value = firebaseAuthInstance.currentUser
         // Nếu người dùng đã đăng nhập và đã bật sinh trắc học, gợi ý họ đăng nhập bằng sinh trắc học
@@ -72,19 +82,21 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    override fun onCleared() {
+        super.onCleared()
+        firebaseAuthInstance.removeAuthStateListener(authStateListener)
+    }
+
     fun isLoggedIn(): Boolean = firebaseAuthInstance.currentUser != null
 
-    private suspend fun handleSuccessfulLogin(firebaseUser: FirebaseUser) {
+    private suspend fun handleSuccessfulLogin(firebaseUser: FirebaseUser, showToast: Boolean = true) {
         _currentUser.value = firebaseUser
         tokenManager.saveAccessToken(firebaseUser.getIdToken(true).await().token!!)
-
-        // Bước 1: Luôn tạo hoặc đồng bộ thông tin người dùng trước.
         syncUserKeysAndData(firebaseUser)
-
-        // Bước 2: Sau khi đảm bảo người dùng đã tồn tại, tiến hành cập nhật FCM token.
         updateFcmToken(firebaseUser.uid)
-
-        _authResult.value = AuthResult.Success("Đăng nhập thành công!")
+        if (showToast) {
+            _authResult.value = AuthResult.Success("Đăng nhập thành công!")
+        }
     }
 
     fun loginUser(email: String, password: String) {
@@ -205,25 +217,38 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
     // --- Biometric Functions ---
     fun setBiometricLoginEnabled(enabled: Boolean) {
         if (enabled && !isLoggedIn()) {
+            // Không cho phép bật nếu chưa đăng nhập
             _authResult.value = AuthResult.Error("Vui lòng đăng nhập trước khi bật tính năng này.")
             return
         }
-        sharedPrefs.edit().putBoolean("biometric_enabled", enabled).apply()
+        sharedPrefs.edit {
+            putBoolean("biometric_enabled", enabled)
+        }
         _isBiometricLoginEnabled.value = enabled
     }
 
     fun loginWithBiometrics() {
-        // Hàm này sẽ được gọi sau khi xác thực sinh trắc học thành công
         viewModelScope.launch {
             _isLoading.value = true
-            // Giả định token đã lưu từ lần đăng nhập trước là hợp lệ
-            // Trong thực tế có thể cần kiểm tra và làm mới token
-            val user = firebaseAuthInstance.currentUser
-            if (user != null && tokenManager.getAccessToken() != null) {
-                handleSuccessfulLogin(user)
+            // **THAY ĐỔI: Logic kiểm tra mạnh mẽ hơn**
+            // Lấy token đã lưu. Nếu không có token, không thể đăng nhập sinh trắc học.
+            val token = tokenManager.getAccessToken()
+            if (token != null) {
+                // Giả định token vẫn còn hạn. Có thể thêm logic refresh token ở đây nếu cần.
+                val user = firebaseAuthInstance.currentUser
+                if (user != null) {
+                    // Không cần hiển thị Toast "Đăng nhập thành công" vì đã có Toast "Xác thực thành công"
+                    handleSuccessfulLogin(user, showToast = false)
+                    // Cập nhật lại AuthResult để điều hướng
+                    _authResult.value = AuthResult.Success(null)
+                } else {
+                    // Trường hợp hiếm gặp: có token nhưng không có user object
+                    _authResult.value = AuthResult.Error("Phiên đăng nhập không hợp lệ. Vui lòng đăng nhập lại.")
+                }
             } else {
+                // Đây là lỗi người dùng đang gặp phải
                 _authResult.value = AuthResult.Error("Không tìm thấy thông tin đăng nhập. Vui lòng đăng nhập lại bằng mật khẩu.")
-                setBiometricLoginEnabled(false) // Tắt đi nếu thông tin không hợp lệ
+                setBiometricLoginEnabled(false)
             }
             _isLoading.value = false
         }
