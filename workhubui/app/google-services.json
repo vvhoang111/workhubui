@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "623707381852",
+    "project_id": "workhub-cdcs",
+    "storage_bucket": "workhub-cdcs.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:623707381852:android:b8acb4b5103929a3328699",
+        "android_client_info": {
+          "package_name": "com.cdcs"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "623707381852-s09gt4f4o4mcmmc2laaforn030es3t01.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.cdcs",
+            "certificate_hash": "91b80b18083a9d27b0300d14f450942f56cca9d6"
+          }
+        },
+        {
+          "client_id": "623707381852-m6ffpcnfr7e5s225jr7sf6c2ubnvvvfl.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCOyggV5QUWOimWNV17JI4HZ7zcAs7b9F0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "623707381852-m6ffpcnfr7e5s225jr7sf6c2ubnvvvfl.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

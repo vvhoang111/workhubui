@@ -1,0 +1,8 @@
+[
+  { "time": "7:00 AM", "title": "Design Review", "detail": "Thảo luận về các thay đổi UI/UX cho bản cập nhật sắp tới." },
+  { "time": "8:00 AM", "title": "Client Presentation", "detail": "Trình bày thiết kế cuối cùng cho khách hàng A." },
+  { "time": "9:00 AM", "title": "Design Review", "detail": "Kiểm tra lại các wireframe và mockup cho dự án mới." },
+  { "time": "11:00 AM", "title": "Client Presentation", "detail": "Chuẩn bị cho buổi thuyết trình quan trọng với khách hàng B." },
+  { "time": "2:00 PM", "title": "Team Meeting", "detail": "Họp kế hoạch sprint cho 2 tuần tới." },
+  { "time": "3:00 PM", "title": "Team Meeting", "detail": "Họp tổng kết sprint và đánh giá hiệu suất." }
+]

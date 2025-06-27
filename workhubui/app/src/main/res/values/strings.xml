@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">workhubui</string>
+    <!-- Đây là Web client ID từ Firebase Console.
+         Nó được sử dụng làm 'serverClientId' trong GoogleSignInOptions.
+         Giá trị này khớp với client_id có client_type là 3 trong google-services.json của bạn.
+    -->
+    <string name="default_web_client_id">488755766003-ug76qvu4sgs1nghi28bnecidn8jt6rtg.apps.googleusercontent.com</string>
+</resources>
