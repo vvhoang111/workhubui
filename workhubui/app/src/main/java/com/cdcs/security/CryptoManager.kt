@@ -21,29 +21,25 @@ import javax.crypto.spec.IvParameterSpec
 
 class CryptoManager {
 
-    private val keyStore = KeyStore.getInstance("AndroidKeyStore").apply {
+    private val androidKeyStoreProvider = "AndroidKeyStore"
+    private val rsaTransformation = "RSA/ECB/PKCS1Padding"
+    private val aesTransformation = "AES/CBC/PKCS7Padding"
+
+    private val keyStore = KeyStore.getInstance(androidKeyStoreProvider).apply {
         load(null)
     }
 
-    private fun getAesCipher(): Cipher = Cipher.getInstance("AES/CBC/PKCS7Padding")
-
     private fun getRsaKeyPair(alias: String): KeyPair? {
-        return try {
-            val privateKeyEntry = keyStore.getEntry(alias, null) as? KeyStore.PrivateKeyEntry
-            if (privateKeyEntry != null) {
-                KeyPair(privateKeyEntry.certificate.publicKey, privateKeyEntry.privateKey)
-            } else {
-                null
-            }
-        } catch (e: Exception) {
-            Log.e("CryptoManager", "Lỗi khi lấy RSA KeyPair từ Keystore", e)
-            null
-        }
+        val entry = keyStore.getEntry(alias, null) as? KeyStore.PrivateKeyEntry
+        return entry?.let { KeyPair(it.certificate.publicKey, it.privateKey) }
     }
 
     private fun generateRsaKeyPair(alias: String): KeyPair {
-        val keyPairGenerator = KeyPairGenerator.getInstance(KeyProperties.KEY_ALGORITHM_RSA, "AndroidKeyStore")
-        val parameterSpec = KeyGenParameterSpec.Builder(alias, KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
+        val keyPairGenerator = KeyPairGenerator.getInstance(KeyProperties.KEY_ALGORITHM_RSA, androidKeyStoreProvider)
+        val parameterSpec = KeyGenParameterSpec.Builder(
+            alias,
+            KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT
+        )
             .setKeySize(2048)
             .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_RSA_PKCS1)
             .build()
@@ -56,13 +52,8 @@ class CryptoManager {
         return getRsaKeyPair(alias) ?: generateRsaKeyPair(alias)
     }
 
-    fun getUserPublicKeyAsString(userUid: String): String {
-        val keyPair = getOrCreateUserKeyPair(userUid)
-        return Base64.encodeToString(keyPair.public.encoded, Base64.DEFAULT)
-    }
-
     fun encryptWithRsaPublicKey(data: ByteArray, publicKey: PublicKey): ByteArray {
-        val cipher = Cipher.getInstance("RSA/ECB/PKCS1Padding")
+        val cipher = Cipher.getInstance(rsaTransformation)
         cipher.init(Cipher.ENCRYPT_MODE, publicKey)
         return cipher.doFinal(data)
     }
@@ -76,7 +67,7 @@ class CryptoManager {
                 return null
             }
             val privateKey = privateKeyEntry.privateKey
-            val cipher = Cipher.getInstance("RSA/ECB/PKCS1Padding")
+            val cipher = Cipher.getInstance(rsaTransformation)
             cipher.init(Cipher.DECRYPT_MODE, privateKey)
             cipher.doFinal(encryptedData)
         } catch (e: Exception) {
@@ -85,19 +76,18 @@ class CryptoManager {
         }
     }
 
-    // ... các hàm còn lại giữ nguyên ...
     fun generateAesSessionKey(): SecretKey {
         return KeyGenerator.getInstance("AES").apply { init(256) }.generateKey()
     }
 
     fun encryptWithAesKey(data: ByteArray, secretKey: SecretKey): Pair<ByteArray, ByteArray> {
-        val cipher = getAesCipher()
+        val cipher = Cipher.getInstance(aesTransformation)
         cipher.init(Cipher.ENCRYPT_MODE, secretKey)
         return Pair(cipher.iv, cipher.doFinal(data))
     }
 
     fun decryptWithAesKey(encryptedData: ByteArray, iv: ByteArray, secretKey: SecretKey): ByteArray {
-        val cipher = getAesCipher()
+        val cipher = Cipher.getInstance(aesTransformation)
         cipher.init(Cipher.DECRYPT_MODE, secretKey, IvParameterSpec(iv))
         return cipher.doFinal(encryptedData)
     }
@@ -109,7 +99,7 @@ class CryptoManager {
     }
 
     private fun generateVaultSecretKey(alias: String): SecretKey {
-        return KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore").apply {
+        return KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, androidKeyStoreProvider).apply {
             val spec = KeyGenParameterSpec.Builder(alias, KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
                 .setBlockModes(KeyProperties.BLOCK_MODE_CBC)
                 .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_PKCS7)
@@ -122,7 +112,7 @@ class CryptoManager {
 
     fun encryptFile(file: File, application: Application): File? {
         return try {
-            val cipher = getAesCipher()
+            val cipher = Cipher.getInstance(aesTransformation)
             cipher.init(Cipher.ENCRYPT_MODE, getVaultSecretKey())
             val iv = cipher.iv
             val encryptedFile = File(application.cacheDir, "enc_${file.name}")
@@ -142,7 +132,7 @@ class CryptoManager {
             FileInputStream(encryptedFile).use { fis ->
                 val iv = ByteArray(16)
                 fis.read(iv)
-                val cipher = getAesCipher()
+                val cipher = Cipher.getInstance(aesTransformation)
                 cipher.init(Cipher.DECRYPT_MODE, getVaultSecretKey(), IvParameterSpec(iv))
                 CipherInputStream(fis, cipher).use { cis ->
                     FileOutputStream(decryptedFile).use { fos -> cis.copyTo(fos) }

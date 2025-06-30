@@ -2,7 +2,6 @@ package com.cdcs.data.remote
 
 import android.util.Log
 import com.cdcs.data.local.entity.UserEntity
-import com.cdcs.model.ChatMessage
 import com.cdcs.model.ChatRoomMetadata
 import com.cdcs.model.FirestoreChatMessage
 import com.google.firebase.firestore.FieldValue
@@ -30,7 +29,6 @@ class FirebaseRepository {
         }
     }
 
-    // **ĐỊNH NGHĨA HÀM BỊ THIẾU NẰM Ở ĐÂY**
     fun getChatRoomsListener(userUid: String, onUpdate: (List<ChatRoomMetadata>) -> Unit): ListenerRegistration {
         return chatRoomsCollection.whereArrayContains("participants", userUid)
             .orderBy("lastMessageTimestamp", Query.Direction.DESCENDING)
@@ -45,7 +43,6 @@ class FirebaseRepository {
             }
     }
 
-    // **VÀ ĐÂY**
     fun getChatMessagesListener(chatRoomId: String, onNewMessages: (List<FirestoreChatMessage>) -> Unit): ListenerRegistration {
         return chatsCollection.document(chatRoomId).collection("messages")
             .orderBy("timestamp", Query.Direction.ASCENDING)
@@ -112,6 +109,17 @@ class FirebaseRepository {
         } catch (e: Exception) {
             Log.e(TAG, "Error getting user profile for $uid", e)
             null
+        }
+    }
+
+    // **HÀM CÒN THIẾU ĐƯỢC BỔ SUNG Ở ĐÂY**
+    suspend fun getUserProfiles(uids: List<String>): List<UserEntity> {
+        if (uids.isEmpty()) return emptyList()
+        return try {
+            usersCollection.whereIn("uid", uids).get().await().toObjects(UserEntity::class.java)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting user profiles", e)
+            emptyList()
         }
     }
 

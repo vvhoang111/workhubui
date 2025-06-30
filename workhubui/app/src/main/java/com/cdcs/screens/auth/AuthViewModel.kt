@@ -73,7 +73,6 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
 
     init {
         firebaseAuthInstance.addAuthStateListener(authStateListener)
-        // Gợi ý đăng nhập sinh trắc học khi khởi tạo nếu đã được bật và đã đăng nhập
         if (isLoggedIn() && isBiometricLoginEnabled.value) {
             _shouldPromptBiometric.value = true
         }
@@ -98,31 +97,23 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
     fun loginWithBiometrics() {
         viewModelScope.launch {
             _isLoading.value = true
-
-            // 1. Kiểm tra xem người dùng đã từng đăng nhập để có token hay chưa
             if (tokenManager.getAccessToken() == null) {
                 _authResult.value = AuthResult.Error("Vui lòng đăng nhập bằng các phương thức khác trước để bật tính năng này.")
                 _isLoading.value = false
-                setBiometricLoginEnabled(false) // Tắt tính năng nếu không có token
+                setBiometricLoginEnabled(false)
                 return@launch
             }
-
-            // 2. Nếu user object đã có sẵn (app không bị cold start), đăng nhập ngay
             val initialUser = firebaseAuthInstance.currentUser
             if (initialUser != null) {
                 handleSuccessfulLogin(initialUser, showToast = false)
-                _authResult.value = AuthResult.Success(null) // Trigger navigation
+                _authResult.value = AuthResult.Success(null)
                 _isLoading.value = false
                 return@launch
             }
-
-            // 3. Nếu là cold start, chờ AuthStateListener khôi phục user
             try {
-                // Chờ tối đa 3 giây để Firebase khôi phục phiên
                 withTimeout(3000L) {
                     _currentUser.collect { user ->
                         if (user != null) {
-                            // Khi user được khôi phục, tiến hành đăng nhập
                             handleSuccessfulLogin(user, showToast = false)
                             _authResult.value = AuthResult.Success(null)
                             throw CancellationException("Login successful, stopping collection.")
@@ -130,11 +121,9 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
             } catch (e: TimeoutCancellationException) {
-                // Hết 3 giây mà vẫn không có user -> phiên đăng nhập thực sự không hợp lệ
-                _authResult.value = AuthResult.Error("Không tìm thấy thông tin đăng nhập. Vui lòng đăng nhập lại.")
+                _authResult.value = AuthResult.Error("Không tìm thấy thông tin đăng nhập.\nVui lòng đăng nhập lại.")
                 setBiometricLoginEnabled(false)
             } catch (e: CancellationException) {
-                // Bỏ qua lỗi này, nó được dùng để thoát khỏi coroutine một cách có chủ đích
                 Log.d("AuthViewModel", e.message ?: "Biometric login flow completed.")
             } finally {
                 _isLoading.value = false
@@ -163,7 +152,9 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             _isLoading.value = true
             if (email.isBlank() || password.isBlank()) {
-                _authResult.value = AuthResult.Error("Email và mật khẩu không được để trống."); _isLoading.value = false; return@launch
+                _authResult.value = AuthResult.Error("Email và mật khẩu không được để trống.")
+                _isLoading.value = false
+                return@launch
             }
             try {
                 val authResultFirebase = firebaseAuthInstance.createUserWithEmailAndPassword(email, password).await()
@@ -194,25 +185,27 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
     fun logoutUser() {
         viewModelScope.launch {
             firebaseAuthInstance.signOut()
-            // Không cần xóa token và tắt biometric ở đây vì AuthStateListener sẽ xử lý
+            tokenManager.clearTokens()
             withContext(Dispatchers.IO) {
                 userRepository.clearUsers()
                 chatRepository.clearChatMessages()
             }
             _authResult.value = AuthResult.Idle
+            Log.d("AuthViewModel", "User logged out and session cleared.")
         }
     }
 
     private fun updateFcmToken(uid: String) {
         FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
             if (!task.isSuccessful) {
-                Log.w("AuthViewModel", "Fetching FCM token failed", task.exception); return@addOnCompleteListener
+                Log.w("AuthViewModel", "Fetching FCM token failed", task.exception);
+                return@addOnCompleteListener
             }
             val token = task.result ?: return@addOnCompleteListener
             viewModelScope.launch(Dispatchers.IO) {
                 try {
                     val userProfile = firebaseRepository.getUserProfile(uid)
-                    if (userProfile != null && !userProfile.fcmTokens.contains(token)) {
+                    if (userProfile?.fcmTokens?.contains(token) == false) {
                         val updatedTokens = userProfile.fcmTokens + token
                         val updatedUser = userProfile.copy(fcmTokens = updatedTokens)
                         firebaseRepository.saveUserToFirestore(updatedUser)
@@ -228,26 +221,49 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
     private suspend fun syncUserKeysAndData(firebaseUser: FirebaseUser) {
         val uid = firebaseUser.uid
         withContext(Dispatchers.IO) {
-            var userProfile = firebaseRepository.getUserProfile(uid)
-
-            if (userProfile == null) {
-                Log.d("AuthViewModel", "User not found in Firestore. Creating new document for $uid.")
+            try {
+                // 1. Đồng bộ hóa khóa
                 val localKeyPair = cryptoManager.getOrCreateUserKeyPair(uid)
                 val localPublicKeyString = Base64.encodeToString(localKeyPair.public.encoded, Base64.DEFAULT)
+                var remoteProfile = firebaseRepository.getUserProfile(uid)
+                val profileToSync: UserEntity
 
-                userProfile = UserEntity(
-                    uid = uid,
-                    email = firebaseUser.email,
-                    displayName = firebaseUser.displayName ?: firebaseUser.email?.substringBefore('@') ?: firebaseUser.phoneNumber,
-                    photoUrl = firebaseUser.photoUrl?.toString(),
-                    publicKey = localPublicKeyString,
-                    friends = emptyList(),
-                    fcmTokens = emptyList()
-                )
+                if (remoteProfile == null || remoteProfile.publicKey != localPublicKeyString) {
+                    Log.d("AuthViewModel", "Local/Remote key mismatch or new user. Updating Firestore.")
+                    profileToSync = UserEntity(
+                        uid = uid,
+                        email = firebaseUser.email,
+                        displayName = firebaseUser.displayName ?: firebaseUser.email?.substringBefore('@'),
+                        photoUrl = firebaseUser.photoUrl?.toString(),
+                        publicKey = localPublicKeyString,
+                        friends = remoteProfile?.friends ?: emptyList(),
+                        fcmTokens = remoteProfile?.fcmTokens ?: emptyList()
+                    )
+                    firebaseRepository.saveUserToFirestore(profileToSync)
+                } else {
+                    profileToSync = remoteProfile
+                }
+
+                // 2. Lấy thông tin bạn bè từ server
+                val friendUids = profileToSync.friends
+                // **BẮT ĐẦU SỬA LỖI QUAN TRỌNG**
+                // Lấy thông tin bạn bè từ `firebaseRepository` (server) chứ không phải `userRepository` (local)
+                val friendProfiles = if (friendUids.isNotEmpty()) {
+                    firebaseRepository.getUserProfiles(friendUids)
+                } else {
+                    emptyList()
+                }
+                // **KẾT THÚC SỬA LỖI QUAN TRỌNG**
+
+                // 3. Cập nhật database local với dữ liệu mới nhất
+                val allUsersToInsert = friendProfiles + profileToSync
+                userRepository.clearUsers()
+                userRepository.insertUsers(allUsersToInsert)
+                Log.d("AuthViewModel", "User data synced. User: $uid, Friends: ${friendUids.size}")
+
+            } catch(e: Exception) {
+                Log.e("AuthViewModel", "Failed to sync user data.", e)
             }
-            firebaseRepository.saveUserToFirestore(userProfile)
-            userRepository.insertUser(userProfile)
-            Log.d("AuthViewModel", "User data sync complete for $uid.")
         }
     }
 

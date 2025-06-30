@@ -9,10 +9,10 @@
             <InsightsFilterSettings>
               <option name="connection">
                 <ConnectionSetting>
-                  <option name="appId" value="com.workhubui" />
-                  <option name="mobileSdkAppId" value="1:488755766003:android:bf55a7c8c22b298ad68d86" />
-                  <option name="projectId" value="workhubui" />
-                  <option name="projectNumber" value="488755766003" />
+                  <option name="appId" value="com.cdcs" />
+                  <option name="mobileSdkAppId" value="1:623707381852:android:b8acb4b5103929a3328699" />
+                  <option name="projectId" value="workhub-cdcs" />
+                  <option name="projectNumber" value="623707381852" />
                 </ConnectionSetting>
               </option>
               <option name="signal" value="SIGNAL_UNSPECIFIED" />
