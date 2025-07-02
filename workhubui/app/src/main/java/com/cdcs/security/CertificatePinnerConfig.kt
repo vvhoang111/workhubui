@@ -25,11 +25,11 @@ import okhttp3.CertificatePinner
 object CertificatePinnerConfig {
     val certificatePinner: CertificatePinner = CertificatePinner.Builder()
         // Firebase Realtime Database (ví dụ)
-        .add("*.firebaseio.com", "sha256/YOUR_FIREBASE_REALTIME_DB_SPKI_SHA256_HASH_HERE")
+        .add("*.firebaseio.com", "sha256/9OtY/fGsOClwd5cM9+v8LCyQTFQhCsk6nxkj++/knQA=")
         // Firebase Authentication và các dịch vụ Google API khác
-        .add("securetoken.googleapis.com", "sha256/YOUR_FIREBASE_AUTH_SPKI_SHA256_HASH_HERE")
-        .add("firestore.googleapis.com", "sha256/YOUR_FIREBASE_FIRESTORE_SPKI_SHA256_HASH_HERE")
-        .add("firebasestorage.googleapis.com", "sha256/YOUR_FIREBASE_STORAGE_SPKI_SHA256_HASH_HERE")
+        .add("securetoken.googleapis.com", "sha256/ 9gIG0nuBhcfEPX/ipsl2VHWAStTwFc1zJt4b5JZMnKg=")
+        .add("firestore.googleapis.com", "sha256/ jLCCSiBMSLXuTeferDLfaKLVw5OS9l3FPgKU5dq89EM=")
+        .add("firebasestorage.googleapis.com", "sha256/ 9gIG0nuBhcfEPX/ipsl2VHWAStTwFc1zJt4b5JZMnKg=")
         // Thêm các domain khác mà ứng dụng của bạn kết nối qua OkHttp và bạn muốn ghim chứng chỉ
         // .add("your.custom.api.domain.com", "sha256/YOUR_CUSTOM_API_SPKI_SHA256_HASH_HERE")
         .build()
