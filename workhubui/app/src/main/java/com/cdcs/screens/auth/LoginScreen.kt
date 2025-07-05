@@ -3,7 +3,6 @@ package com.cdcs.screens.auth
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
@@ -17,15 +16,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -61,7 +56,6 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import com.cdcs.R
 import com.cdcs.navigation.Routes
-import com.cdcs.security.BiometricHelper
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions
 import com.google.android.gms.common.api.ApiException
@@ -83,40 +77,9 @@ fun LoginScreen(navController: NavHostController) {
 
     val authResult by authViewModel.authResult.collectAsState()
     val isLoading by authViewModel.isLoading.collectAsState()
-    val isBiometricEnabled by authViewModel.isBiometricLoginEnabled.collectAsState()
 
     val credentialManager = remember { CredentialManager.create(context) }
     val serverClientId = context.getString(R.string.default_web_client_id)
-
-    val activity = context as? AppCompatActivity
-
-    // Hàm gọi prompt sinh trắc học
-    fun showBiometricPrompt() {
-        if (activity != null && BiometricHelper.isBiometricAvailable(context)) {
-            BiometricHelper.showBiometricPrompt(
-                activity = activity,
-                onSuccess = {
-                    Toast.makeText(context, "Xác thực thành công!", Toast.LENGTH_SHORT).show()
-                    authViewModel.loginWithBiometrics()
-                },
-                onError = { _, errString ->
-                    Toast.makeText(context, errString, Toast.LENGTH_SHORT).show()
-                },
-                onFailure = {
-                    Toast.makeText(context, "Xác thực thất bại.", Toast.LENGTH_SHORT).show()
-                }
-            )
-        }
-    }
-
-    // Tự động hiển thị prompt nếu người dùng đã bật sẵn và vừa mở app
-    val shouldPromptBiometric by authViewModel.shouldPromptBiometric.collectAsState()
-    LaunchedEffect(shouldPromptBiometric, activity) {
-        if (shouldPromptBiometric) {
-            showBiometricPrompt()
-            authViewModel.biometricPromptFinished() // Đặt lại cờ để không hiện lại
-        }
-    }
 
     val googleSignInLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
@@ -209,7 +172,7 @@ fun LoginScreen(navController: NavHostController) {
         ) {
             Button(
                 onClick = { authViewModel.loginUser(email, password) },
-                modifier = Modifier.weight(1f).height(50.dp),
+                modifier = Modifier.fillMaxWidth().height(50.dp), // Thay đổi weight thành fillMaxWidth
                 enabled = !isLoading,
                 shape = MaterialTheme.shapes.medium
             ) {
@@ -219,15 +182,7 @@ fun LoginScreen(navController: NavHostController) {
                     Text("Đăng nhập", fontSize = 18.sp)
                 }
             }
-            // **THAY ĐỔI: Nút bấm sinh trắc học thay cho Switch**
-            if (isBiometricEnabled && BiometricHelper.isBiometricAvailable(context)) {
-                IconButton(
-                    onClick = { showBiometricPrompt() },
-                    modifier = Modifier.size(50.dp)
-                ) {
-                    Icon(Icons.Default.Fingerprint, contentDescription = "Đăng nhập bằng sinh trắc học", modifier = Modifier.size(32.dp))
-                }
-            }
+            // Đã xóa nút bấm sinh trắc học ở đây
         }
 
         OrDivider()

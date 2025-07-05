@@ -2,10 +2,8 @@ package com.cdcs.screens.auth
 
 import android.app.Activity
 import android.app.Application
-import android.content.Context
 import android.util.Base64
 import android.util.Log
-import androidx.core.content.edit
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.cdcs.data.local.AppDatabase
@@ -22,9 +20,7 @@ import com.google.firebase.auth.PhoneAuthCredential
 import com.google.firebase.auth.PhoneAuthOptions
 import com.google.firebase.auth.PhoneAuthProvider
 import com.google.firebase.messaging.FirebaseMessaging
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -33,14 +29,12 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeout
 import java.util.concurrent.TimeUnit
 
 class AuthViewModel(application: Application) : AndroidViewModel(application) {
 
     private val firebaseAuthInstance: FirebaseAuth = FirebaseAuth.getInstance()
     private val tokenManager: TokenManager = TokenManager(application.applicationContext)
-    private val sharedPrefs = application.getSharedPreferences("biometric_prefs", Context.MODE_PRIVATE)
 
     private val userDao = AppDatabase.getInstance(application).userDao()
     private val chatMessageDao = AppDatabase.getInstance(application).chatMessageDao()
@@ -58,12 +52,6 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
-    private val _isBiometricLoginEnabled = MutableStateFlow(sharedPrefs.getBoolean("biometric_enabled", false))
-    val isBiometricLoginEnabled: StateFlow<Boolean> = _isBiometricLoginEnabled.asStateFlow()
-
-    private val _shouldPromptBiometric = MutableStateFlow(false)
-    val shouldPromptBiometric: StateFlow<Boolean> = _shouldPromptBiometric.asStateFlow()
-
     private val _navigateToOtpVerify = MutableSharedFlow<String>()
     val navigateToOtpVerify = _navigateToOtpVerify.asSharedFlow()
 
@@ -73,9 +61,6 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
 
     init {
         firebaseAuthInstance.addAuthStateListener(authStateListener)
-        if (isLoggedIn() && isBiometricLoginEnabled.value) {
-            _shouldPromptBiometric.value = true
-        }
     }
 
     override fun onCleared() {
@@ -91,43 +76,6 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
         updateFcmToken(firebaseUser.uid)
         if (showToast) {
             _authResult.value = AuthResult.Success("Đăng nhập thành công!")
-        }
-    }
-
-    fun loginWithBiometrics() {
-        viewModelScope.launch {
-            _isLoading.value = true
-            if (tokenManager.getAccessToken() == null) {
-                _authResult.value = AuthResult.Error("Vui lòng đăng nhập bằng các phương thức khác trước để bật tính năng này.")
-                _isLoading.value = false
-                setBiometricLoginEnabled(false)
-                return@launch
-            }
-            val initialUser = firebaseAuthInstance.currentUser
-            if (initialUser != null) {
-                handleSuccessfulLogin(initialUser, showToast = false)
-                _authResult.value = AuthResult.Success(null)
-                _isLoading.value = false
-                return@launch
-            }
-            try {
-                withTimeout(3000L) {
-                    _currentUser.collect { user ->
-                        if (user != null) {
-                            handleSuccessfulLogin(user, showToast = false)
-                            _authResult.value = AuthResult.Success(null)
-                            throw CancellationException("Login successful, stopping collection.")
-                        }
-                    }
-                }
-            } catch (e: TimeoutCancellationException) {
-                _authResult.value = AuthResult.Error("Không tìm thấy thông tin đăng nhập.\nVui lòng đăng nhập lại.")
-                setBiometricLoginEnabled(false)
-            } catch (e: CancellationException) {
-                Log.d("AuthViewModel", e.message ?: "Biometric login flow completed.")
-            } finally {
-                _isLoading.value = false
-            }
         }
     }
 
@@ -246,14 +194,11 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
 
                 // 2. Lấy thông tin bạn bè từ server
                 val friendUids = profileToSync.friends
-                // **BẮT ĐẦU SỬA LỖI QUAN TRỌNG**
-                // Lấy thông tin bạn bè từ `firebaseRepository` (server) chứ không phải `userRepository` (local)
                 val friendProfiles = if (friendUids.isNotEmpty()) {
                     firebaseRepository.getUserProfiles(friendUids)
                 } else {
                     emptyList()
                 }
-                // **KẾT THÚC SỬA LỖI QUAN TRỌNG**
 
                 // 3. Cập nhật database local với dữ liệu mới nhất
                 val allUsersToInsert = friendProfiles + profileToSync
@@ -265,19 +210,6 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
                 Log.e("AuthViewModel", "Failed to sync user data.", e)
             }
         }
-    }
-
-    fun setBiometricLoginEnabled(enabled: Boolean) {
-        if (enabled && !isLoggedIn()) {
-            _authResult.value = AuthResult.Error("Vui lòng đăng nhập trước khi bật tính năng này.")
-            return
-        }
-        sharedPrefs.edit { putBoolean("biometric_enabled", enabled) }
-        _isBiometricLoginEnabled.value = enabled
-    }
-
-    fun biometricPromptFinished() {
-        _shouldPromptBiometric.value = false
     }
 
     private val phoneAuthCallbacks = object : PhoneAuthProvider.OnVerificationStateChangedCallbacks() {
